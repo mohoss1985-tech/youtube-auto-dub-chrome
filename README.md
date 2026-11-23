@@ -1,51 +1,97 @@
-# AutoDub (v1, personal use)
+# AutoDub · YouTube dubbing for Chrome
 
-A Chrome extension that dubs YouTube videos live into **French, Arabic, English, Spanish or Turkish** from the video's subtitles. Built for kids: one click, free voices, the voice follows the speaker (male / female).
+**Watch any YouTube video with subtitles in French, Arabic, English, Spanish or Turkish. AutoDub reads the subtitles out loud in your language while the video plays, and turns the original sound down. Made for kids: one click, free voices, and the voice follows the speaker (man or woman).**
 
-> Codename only: "AutoDub" is already used by another Chrome Web Store extension. Rename before any public listing.
+[![Download for Chrome](https://img.shields.io/badge/%E2%AC%87%20Download%20for%20Chrome-3D5AFE?style=for-the-badge)](https://github.com/mohoss1985-tech/youtube-auto-dub-chrome/releases/latest/download/autodub-chrome.zip)
 
-## Install (1 minute, no store account)
-1. `npm install && npm run build` (already done once: the build is in `dist/`).
-2. Open `chrome://extensions`, turn on **Developer mode** (top right).
-3. **Load unpacked** → pick the `dist` folder.
-4. Pin AutoDub (puzzle icon → pin).
+🇫🇷 [Version française](README.fr.md) · [Changelog](CHANGELOG.md)
 
-## Use
-1. Open a YouTube video that has subtitles (any one language is enough).
-2. Click the **Dub** button in the player bar (next to CC), or the popup switch, or press **Alt+D**.
-3. Pick the language in the popup. The dub starts from where the video is.
-4. **Original audio** to hear the original under the dub. Turn it off to get the original back instantly.
+<p align="center">
+  <img src="screenshots/popup-dubbing.png" width="260" alt="AutoDub popup while dubbing">
+  <img src="screenshots/popup-engine-open.png" width="260" alt="Voice engine settings">
+  <img src="screenshots/popup-dark.png" width="260" alt="Dark mode">
+</p>
 
-## How a video is translated (free first)
-1. Subtitles already in your language → used as is.
-2. YouTube's own translated subtitles.
-3. **Chrome's built-in translator** (on-device, free; downloads a language pack the first time — the popup shows "Downloading French translator… 40%").
-4. OpenAI (only if you entered a key).
-If none works, the popup says so clearly. Videos with **no subtitles at all** can't be dubbed in v1.
+## Install in 2 minutes (no Chrome Web Store needed)
 
-## Voices
-- **Free (default):** the voices installed on your Mac. Several per language, male and female.
-  - More / better voices: System Settings → Accessibility → Spoken Content → System voice → **Manage voices** → download "Enhanced"/"Premium" voices for French, Arabic, Spanish, Turkish.
-  - The popup shows how many male / female voices each language has.
-- **Match speaker's voice** (on by default): AutoDub listens to the speaker's pitch and uses a male or female voice. It is a best guess: cartoons, songs and children's voices (high pitch → female voice) can fool it. Subtitle labels like `[Man]` win over the guess.
-- **Paid, more natural (optional):** OpenAI or ElevenLabs with your own key (Engine section). Rough cost: about $1 per hour of video. Set a spending limit in the provider's dashboard and use a dedicated key you can revoke.
+1. **[Download `autodub-chrome.zip`](https://github.com/mohoss1985-tech/youtube-auto-dub-chrome/releases/latest/download/autodub-chrome.zip)** and double-click it to unzip. You get a folder called `autodub-chrome`.
+   Put it somewhere it will stay (for example in Documents): Chrome loads it from there every time.
+2. In Chrome, open **`chrome://extensions`** (type it in the address bar).
+3. Turn on **Developer mode** (switch at the top right).
+4. Click **Load unpacked** and pick the `autodub-chrome` folder.
+5. Click the puzzle icon 🧩 in the toolbar and **pin AutoDub**.
+
+Works in Chrome 138 or newer on Mac, Windows and Linux. Brave and Edge should work too (not tested).
+
+## Use it
+
+1. Open a YouTube video that has subtitles (one language is enough, auto-generated ones work too).
+2. Click **Dub** in the player bar (next to CC), or press **Alt+D**, or use the switch in the AutoDub popup.
+3. Pick the language in the popup: **FR · AR · EN · ES · TR**.
+4. Click **Dub** again to get the original sound back.
+
+| Setting | What it does |
+|---|---|
+| **Original audio** | How loud the original stays under the dub (10 % by default, 0 % = only the dub) |
+| **Voice** + ▶ Test | Choose the voice; each one is labelled Male or Female |
+| **Match speaker's voice** | A man speaking → male voice, a woman → female voice |
+| **Voice speed** | 0.75× (slower, good for small kids) to 1.3× |
+| **Show translated subtitles** | Shows the translated sentence on the video |
+| **Engine** | Free voices (default), or OpenAI / ElevenLabs with your own key |
+
+## How it works
+
+```
+YouTube subtitles ──► sentences ──► translation ──► voice ──► played in time with the video
+                                     (free first)    (free Mac/PC voices,
+                                                      or your own AI key)
+```
+
+- **Translation, free first:** subtitles already in your language → YouTube's own translated subtitles → **Chrome's built-in translator** (runs on your computer, downloads a language pack the first time) → OpenAI, only if you add a key.
+- **In sync:** the voice follows the video's clock. Pause, seek or change speed and the dub follows. During ads the dub pauses and the ad plays normally.
+- **Continuous voice:** a sentence is never cut in the middle. If one runs long, the next waits and speaks a little faster to catch up.
+- **Man or woman:** AutoDub listens to the pitch of the original voice and picks a male or female voice. Subtitle labels like `[Man]` win over the guess.
+
+## Better voices (free)
+
+The free voices are the ones installed on your computer.
+- **Mac:** System Settings → Accessibility → Spoken Content → System voice → **Manage voices**. Download the "Enhanced" or "Premium" voices for French, Arabic, Spanish and Turkish (a man and a woman for each, so speaker matching works).
+- **Windows:** Settings → Time & language → Speech → **Add voices**.
+
+The popup shows how many male and female voices each language has.
+
+## Paid voices (optional)
+
+For more natural voices, open **Engine** in the popup and choose OpenAI or ElevenLabs with your own API key (about $1 per hour of video). Use a dedicated key you can revoke and set a spending limit in the provider's dashboard. AutoDub never makes a paid call without your key.
 
 ## Privacy
-No account, no server, no analytics. Settings, feedback (👍/👎) and keys stay in Chrome on this Mac. Keys are only sent to the provider you chose, and only read by the popup and background — never by the code running on YouTube. The voice is AI-generated (badge on the player).
 
-## Limits (v1)
-- Personal viewing only. Never downloads or re-uploads video or audio. Dubbing YouTube is a grey area of YouTube's terms: don't share or publish dubbed recordings.
-- Desktop Chrome 138+ on youtube.com. Not Shorts, not YouTube Kids site, not mobile.
-- **TV: not in v1.** Free Mac voices likely won't reach a TV via Cast tab. Planned for v2 once we know how the TV is watched.
-- Ads are never touched: the dub pauses during ads.
+No account, no server, no analytics. Settings, 👍 / 👎 feedback and keys stay in Chrome on your computer. Keys are only sent to the provider you picked. The voice is AI-generated, and an "AI dub" badge on the player says so.
 
-## Developer
+## Limits
+
+- **Personal viewing only.** AutoDub never downloads or re-uploads video or audio. Don't publish dubbed recordings: it breaks YouTube's terms and the creators' copyright.
+- Videos **without any subtitles** can't be dubbed yet.
+- Not for Shorts, the YouTube Kids site, phones or TV apps (yet).
+- **Man or woman is a best guess.** Cartoons, songs and children's voices (high-pitched → female voice) can fool it.
+- On startup Chrome may show "Disable developer mode extensions". Click **Keep** (or ×): that's normal for extensions installed this way.
+- Not affiliated with YouTube or Google. "AutoDub" is the project's working name. Another, unrelated Chrome extension also uses this name.
+
+## Update
+
+Download the new zip, replace the old `autodub-chrome` folder with it, then click **↻** on AutoDub in `chrome://extensions`.
+
+## For developers
+
+TypeScript, Manifest V3, esbuild, Vitest, Playwright. No runtime dependencies, no remote code.
+
 | Command | What |
 |---|---|
-| `npm run build` | build to `dist/` |
-| `npm test` | 188 unit tests (Vitest) |
+| `npm install && npm run build` | build the extension to `dist/` |
+| `npm test` | 193 unit tests |
 | `npm run typecheck` | TypeScript |
-| `npx playwright test` | popup screenshots + smoke |
-| `LIVE=1 npx playwright test live-dub` | live YouTube test (YouTube returns empty captions to automated Chromium, so it fails there; test by hand in real Chrome) |
+| `npx playwright test` | popup screenshots + smoke test |
 
-Docs: `GOAL.md`, `DESIGN_SPEC.md`, `research/` (research, wave reports, open issues).
+How it was built: [`GOAL.md`](GOAL.md) (outcome and "done means"), [`DESIGN_SPEC.md`](DESIGN_SPEC.md) (architecture, sync algorithm, shared contract), [`research/`](research/) (YouTube internals, voices and sync, competitors, Chrome Web Store and legal). Built with Claude Code.
+
+MIT licence.
