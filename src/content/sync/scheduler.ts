@@ -24,6 +24,14 @@ export interface SchedulerOptions {
   leadMs?: number;
   /** Skip a not-started line this late (default 300 ms). */
   lateSkipMs?: number;
+  /**
+   * Continuous mode (> 0): never cut a line because the next one is due. The next line waits for the
+   * current one to finish and then starts with a catch-up rate. Lag is bounded by this value: lines
+   * later than this when the voice is free are skipped. 0 = strict mode (cut overruns, 300 ms late skip).
+   */
+  maxLagMs?: number;
+  /** Extra rate multiplier allowed to catch up in continuous mode (default 1.35). */
+  maxCatchUp?: number;
   /** Tick period in ms (default 50). */
   tickMs?: number;
   /** Build a plan for line i (default: fit(lines[i], lines[i+1], lang)). */
@@ -67,7 +75,7 @@ export class Scheduler {
   private lines: Line[];
   private readonly clock: Clock;
   private readonly speaker: Speaker;
-  private readonly o: Required<Pick<SchedulerOptions, 'leadMs' | 'lateSkipMs' | 'tickMs' | 'duckLeadMs' | 'duckRestoreMs' | 'duckHoldMs' | 'maxTotalRate'>> & SchedulerOptions;
+  private readonly o: Required<Pick<SchedulerOptions, 'leadMs' | 'lateSkipMs' | 'tickMs' | 'duckLeadMs' | 'duckRestoreMs' | 'duckHoldMs' | 'maxTotalRate' | 'maxLagMs' | 'maxCatchUp'>> & SchedulerOptions;
   private cursor = 0;
   private cur: Current | null = null;
   private running = false;
@@ -142,16 +150,28 @@ export class Scheduler {
     const lead = this.o.leadMs / 1000;
     const late = this.o.lateSkipMs / 1000;
 
-    // Overrun: cut the playing line at its hard boundary.
-    if (this.cur && !this.cur.ended && t >= this.cur.t0 + this.cur.plan.maxMs / 1000) {
+    const continuous = this.o.maxLagMs > 0;
+    const speaking = !!this.cur && !this.cur.ended;
+
+    if (continuous) {
+      // Safety only: a line stuck far past its slot (engine never ended) is cut.
+      if (speaking && t >= this.cur!.t0 + this.cur!.plan.maxMs / 1000 + this.o.maxLagMs / 1000 + 4) this.cutCurrent();
+    } else if (speaking && t >= this.cur!.t0 + this.cur!.plan.maxMs / 1000) {
+      // Strict: cut the playing line at its hard boundary.
       this.cutCurrent();
     }
 
-    // Skip lines that are too late to start (lag never carries over).
-    while (this.cursor < this.lines.length && t > this.lines[this.cursor].start + late) this.cursor++;
+    const busy = !!this.cur && !this.cur.ended;
+    // Skip lines that are too late to start. Continuous: only when the voice is free, with the larger lag budget.
+    const skipAfter = continuous ? Math.max(late, this.o.maxLagMs / 1000) : late;
+    if (!continuous || !busy) {
+      while (this.cursor < this.lines.length && t > this.lines[this.cursor].start + skipAfter) this.cursor++;
+    }
 
     const next = this.lines[this.cursor];
-    if (next && t >= next.start - lead) {
+    if (next && t >= next.start - lead && continuous && busy) {
+      // Let the current line finish; the next one starts right after it (no cut, no gap).
+    } else if (next && t >= next.start - lead) {
       this.startLine(this.cursor, t);
     } else if (next && !this.ducked && t >= next.start - lead - this.o.duckLeadMs / 1000) {
       this.setDuck(true);
@@ -228,7 +248,14 @@ export class Scheduler {
     const wanted = plan.rate * vr;
     // Video sped up so much the voice cannot keep up: skip lines that would lose more than a third.
     if (wanted / this.o.maxTotalRate > 1.5) return;
-    const rate = Math.min(wanted, this.o.maxTotalRate);
+    let rate = Math.min(wanted, this.o.maxTotalRate);
+    // Continuous mode: started late because the previous line ran long → speak a bit faster to catch up.
+    const lag = t - line.start;
+    if (this.o.maxLagMs > 0 && lag > 0.15) {
+      const dur = Math.max(1, line.end - line.start);
+      const boost = Math.min(this.o.maxCatchUp, 1 + lag / dur);
+      rate = Math.min(rate * boost, this.o.maxTotalRate);
+    }
     this.setDuck(true);
     let handle: PlayHandle;
     try {
@@ -241,7 +268,7 @@ export class Scheduler {
     this.cur = cur;
     this.speechEndT = null;
     const id = ++this.seq;
-    this.o.onLineStart?.(plan, (t - plan.startAt) * 1000);
+    this.o.onLineStart?.({ ...plan, rate }, (t - plan.startAt) * 1000);
     Promise.resolve(handle.done).then(
       (r: PlayEnd) => this.onDone(cur, id, r),
       () => this.onDone(cur, id, 'error'),
@@ -287,7 +314,7 @@ export class Scheduler {
   }
 }
 
-const DEFAULTS = { leadMs: 80, lateSkipMs: 300, tickMs: 50, duckLeadMs: 150, duckRestoreMs: 250, duckHoldMs: 400, maxTotalRate: 2 };
+const DEFAULTS = { leadMs: 80, lateSkipMs: 300, tickMs: 50, duckLeadMs: 150, duckRestoreMs: 250, duckHoldMs: 400, maxTotalRate: 2, maxLagMs: 0, maxCatchUp: 1.35 };
 
 function safeRate(r: number): number {
   return Number.isFinite(r) && r > 0 ? r : 1;

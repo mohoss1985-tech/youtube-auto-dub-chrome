@@ -32,10 +32,10 @@ export function splitText(text: string, max = MAX_CHUNK): string[] {
   return out.filter(Boolean);
 }
 
-/** Watchdog budget for one utterance (§4): est*1.6 + 1500 ms. */
+/** Watchdog budget for one utterance: est*2.5 + 3000 ms (generous: a short budget cut slow voices mid-sentence). */
 export function watchdogMs(text: string, lang: Lang, rate: number): number {
   const est = (text.length / (CPS[lang] * Math.max(0.1, rate))) * 1000;
-  return est * 1.6 + 1500;
+  return est * 2.5 + 3000;
 }
 
 /** Web Speech engine: waits voiceschanged (≤ 3 s), keeps utterance refs, re-applies voice per utterance, watchdog est*1.6+1500 ms, splits > 180 chars. */

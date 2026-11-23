@@ -30,6 +30,8 @@ export interface Settings {
   matchSpeakerGender: boolean;
   /** Keep the original audio low for the whole dub, not only while a line plays (default true). */
   holdDuck: boolean;
+  /** Never cut the voice mid-sentence: lines wait for each other and catch up (≤ 2.5 s lag). Default true. */
+  continuous: boolean;
 }
 
 export interface Secrets { openaiKey?: string; elevenKey?: string }

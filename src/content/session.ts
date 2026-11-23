@@ -201,6 +201,7 @@ export class DubSession {
     this.scheduler = new Scheduler(this.lines, this.makeClock(video), this.makeSpeaker(), {
       lang,
       leadMs: this.engineId === 'webspeech' ? 80 : 30,
+      maxLagMs: this.settings.continuous ? 2500 : 0,
       video,
       plan: (line, next) => this.planFor(line, next),
       onLineStart: (plan) => this.onLineStart(plan),
@@ -288,7 +289,7 @@ export class DubSession {
     if (!this.active) return;
     const lang = s.targetLang;
     const restart = prev.targetLang !== s.targetLang || prev.engine !== s.engine
-      || prev.voiceByLang[lang] !== s.voiceByLang[lang] || prev.matchSpeakerGender !== s.matchSpeakerGender;
+      || prev.voiceByLang[lang] !== s.voiceByLang[lang] || prev.matchSpeakerGender !== s.matchSpeakerGender || prev.continuous !== s.continuous;
     if (restart) {
       this.stop();
       void this.start();

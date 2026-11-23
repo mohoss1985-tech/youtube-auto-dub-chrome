@@ -212,6 +212,7 @@ describe('DubSession', () => {
     expect(opts).toMatchObject({ fromTime: 0 });
     await play(video, 1.0);
     onUpdate!(LINES); // rest of the translation arrives
+    engines[0].played[0]?.end('ended'); // continuous mode: 'b' waits for 'a' to finish
     await play(video, 4.0);
     expect(engines[0].played.map((x) => x.p.line.id)).toEqual(['a', 'b']); // 'a' not replayed
     s.stop();

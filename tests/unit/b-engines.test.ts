@@ -188,7 +188,7 @@ describe('WebSpeechEngine', () => {
     expect(await h.done).toBe('stopped');
   });
 
-  it('watchdog formula is est*1.6+1500', () => {
-    expect(watchdogMs('a'.repeat(14), 'en', 1)).toBeCloseTo(1000 * 1.6 + 1500);
+  it('watchdog formula is est*2.5+3000 (generous, never cuts slow voices)', () => {
+    expect(watchdogMs('a'.repeat(14), 'en', 1)).toBeCloseTo(1000 * 2.5 + 3000);
   });
 });
