@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.1 · 2026-11-24 · Works even when YouTube refuses to translate
+
+- **Fix:** "No free English → French translator is available on this device". YouTube now often answers *429 Too many requests* to subtitle translation (even its own Auto-translate), and Chrome's built-in translator is missing on some computers (e.g. managed by a company).
+- **New free offline translator** (Opus-MT, CC-BY 4.0) running inside AutoDub: English → French / Spanish / Arabic and back to English. Downloaded once (~110 MB per language pair), then offline; ~150 ms per sentence.
+- **Sports and YouTube slang** turned into plain English before translating ("from downtown", "seconds left", "let's go", "give it up for"…), so the French makes sense.
+- A YouTube refusal no longer blocks translation for the whole session (retry after 10 min); clearer error messages.
+- 356 unit tests.
+
 ## v1.2.0 · 2026-11-23 · Emotion in the voice
 
 - **Expression:** the dub now has ups and downs. Each line gets an emotion from the subtitles (!, ?, words in CAPITALS, "wow", "let's go", money, NBA calls) and from how excited the scene sounds; Chrome's free built-in AI can tag emotions too.

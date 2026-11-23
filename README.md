@@ -60,7 +60,7 @@ YouTube subtitles ──► sentences ──► translation ──► voice ─�
                                                       or your own AI key)
 ```
 
-- **Translation, free first:** subtitles already in your language → YouTube's own translated subtitles → **Chrome's built-in translator** (runs on your computer, downloads a language pack the first time) → OpenAI, only if you add a key.
+- **Translation, free first:** subtitles already in your language → YouTube's own translated subtitles → Chrome's built-in translator → **AutoDub's own offline translator** (free, runs on your computer, ~110 MB downloaded once per language) → OpenAI, only if you add a key.
 - **In sync:** the voice follows the video's clock. Pause, seek or change speed and the dub follows. During ads the dub pauses and the ad plays normally.
 - **Continuous voice:** a sentence is never cut in the middle. If one runs long, the next waits and speaks a little faster to catch up.
 - **Man or woman:** AutoDub listens to the pitch of the original voice and picks a male or female voice. Subtitle labels like `[Man]` win over the guess.
@@ -102,7 +102,7 @@ TypeScript, Manifest V3, esbuild, Vitest, Playwright. No runtime dependencies, n
 | Command | What |
 |---|---|
 | `npm install && npm run build` | build the extension to `dist/` |
-| `npm test` | 340 unit tests |
+| `npm test` | 356 unit tests |
 | `npm run typecheck` | TypeScript |
 | `npx playwright test` | popup screenshots + smoke test |
 

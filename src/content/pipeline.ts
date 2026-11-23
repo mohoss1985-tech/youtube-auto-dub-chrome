@@ -1,9 +1,11 @@
 // Captions → translated, merged Line[] for one video+language (§3). Owner: A.
 // Order: cache → player response → pickTrack → json3 → merge sentences → translate (if needed) → cache.
-// Translation chain (merge BEFORE translating):
-//   human track: YouTube tlang → Chrome Translator API (on-device) → OpenAI (SW, user key)
-//   ASR track:   Translator API → tlang → OpenAI   (tlang of ASR fragments gives poor sentences)
+// Translation chain (merge BEFORE translating), v1.2.1 (T):
+//   human track: YouTube tlang → Chrome Translator (page) → offline (Chrome Translator in the extension, else
+//                Opus-MT in the offscreen document) → OpenAI (SW, user key) → accurate error
+//   ASR track:   Chrome Translator (page) → offline → tlang → OpenAI   (tlang of ASR fragments gives poor sentences)
 import { sendToSW } from '../shared/messages';
+import { OFFLINE_BATCH, offlineRoute } from '../shared/offline-mt';
 import { LANG_INFO } from '../shared/settings';
 import { DubError, type CaptionTrack, type Cue, type ErrorCode, type Json3, type Lang, type Line } from '../shared/types';
 import { isAsrTrack, langBase, mergeSentences, parseJson3, pickTrack } from './captions';
@@ -34,17 +36,41 @@ export interface GetLinesOptions {
 export const FIRST_CHUNK = 40;
 export const LOCAL_CHUNK = 100;
 export const SW_CHUNK = 40;
+/** v1.2.1 (T): offline (Opus-MT, CPU) — first ~20 lines from the current time, then 32 per chunk (sent as ≤ 16-line batches). */
+export const OFFLINE_FIRST = 20;
+export const OFFLINE_CHUNK = 32;
+/** Poll interval while the offline model downloads, and the longest we wait for it (slow connections: 110 MB). */
+export const OFFLINE_POLL_MS = 700;
+export const OFFLINE_DOWNLOAD_MAX_MS = 20 * 60_000;
+/** Tests shorten the poll interval. */
+export const _offlineTiming = { pollMs: OFFLINE_POLL_MS };
 
-/** One tlang try per video+lang per page session (§3.5; YouTube 429s auto-translated tracks). */
-const tlangTried = new Set<string>();
+/**
+ * One tlang try per video+lang (§3.5; YouTube 429s auto-translated tracks). v1.2.1: a failed try (429) only blocks
+ * tlang for TLANG_RETRY_MS, then one more try is allowed — it never poisons later sessions on the page.
+ */
+export const TLANG_RETRY_MS = 10 * 60_000;
+const tlangFailedAt = new Map<string, number>();
 
 /** For tests. */
 export function _resetPipeline(): void {
-  tlangTried.clear();
+  tlangFailedAt.clear();
 }
 
-/** `:3` = v1.2 (caption emphasis/shout flags for the emotion pass); `:2` = v1.1 text (cleanup, glossary, speaker flags). Older entries are ignored. */
-export const cacheKey = (videoId: string, lang: Lang) => `lines:${videoId}:${lang}:3`;
+/** `:4` = v1.2.1 (offline Opus-MT translations); `:3` = v1.2 (emphasis/shout flags); `:2` = v1.1 text. Older entries are ignored. */
+export const cacheKey = (videoId: string, lang: Lang) => `lines:${videoId}:${lang}:4`;
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Split `n` items into ≤ `max`-sized, even batches (20 → 10 + 10: the first lines come back sooner). */
+export function evenBatches(n: number, max: number): [number, number][] {
+  if (n <= 0) return [];
+  const k = Math.ceil(n / max);
+  const size = Math.ceil(n / k);
+  const out: [number, number][] = [];
+  for (let a = 0; a < n; a += size) out.push([a, Math.min(n, a + size)]);
+  return out;
+}
 
 /** Clean cues (fillers, stutters, shouting, leftover tags); a dropped cue's speaker change moves to the next cue. */
 export function cleanCues(cues: Cue[], lang: string): Cue[] {
@@ -104,8 +130,8 @@ type Tx = (texts: string[]) => Promise<string[] | null>;
 interface TxResult { lines: Line[]; complete: boolean }
 
 /** Translate `src` with `tx` in chunks. null if the first chunk fails (caller tries the next translator). */
-async function runChunks(src: Line[], tx: Tx, chunkSize: number, opts: GetLinesOptions | undefined, onDone: (lines: Line[]) => void, polishText: (t: string) => string = (t) => t): Promise<TxResult | null> {
-  const chunks = planChunks(src, opts?.fromTime ?? 0, FIRST_CHUNK, chunkSize);
+async function runChunks(src: Line[], tx: Tx, chunkSize: number, opts: GetLinesOptions | undefined, onDone: (lines: Line[]) => void, polishText: (t: string) => string = (t) => t, first = FIRST_CHUNK): Promise<TxResult | null> {
+  const chunks = planChunks(src, opts?.fromTime ?? 0, first, chunkSize);
   const done = new Map<number, Line>();
   const doChunk = async ([a, b]: [number, number]): Promise<boolean> => {
     const part = src.slice(a, b);
@@ -136,7 +162,7 @@ async function runChunks(src: Line[], tx: Tx, chunkSize: number, opts: GetLinesO
 }
 
 /**
- * Full pipeline with SW cache `lines:<videoId>:<lang>:3`. Throws DubError NO_CAPTIONS | NO_TRANSLATION | RATE_LIMITED.
+ * Full pipeline with SW cache `lines:<videoId>:<lang>:4`. Throws DubError NO_CAPTIONS | NO_TRANSLATION | RATE_LIMITED.
  * `onProgress` gets user-facing status text (e.g. "Downloading French translator…").
  * v1.1: with `smartFrench` (fr + onUpdate), over-long lines are shortened by Gemini Nano in the background and
  * delivered through `onUpdate` (never blocks; the cache keeps the unshortened lines).
@@ -193,16 +219,19 @@ async function getLinesRaw(videoId: string, lang: Lang, onProgress?: (message: s
   const canTlang = track.isTranslatable !== false && (!tl?.length || tl.some((l) => langBase(l.languageCode) === lang));
   const tryTlang = async (): Promise<Line[] | null> => {
     const k = `${videoId}:${lang}`;
-    if (!canTlang || tlangTried.has(k)) return null;
-    tlangTried.add(k);
+    const failedAt = tlangFailedAt.get(k);
+    if (!canTlang || (failedAt != null && Date.now() - failedAt < TLANG_RETRY_MS)) return null;
     say(`Getting ${langName} captions from YouTube…`);
+    let lines: Line[] = [];
     try {
       const json = await getJson3(track, videoId, lang);
-      const lines = json ? polish(linesFromJson3(json, lang), lang) : [];
-      return lines.length ? lines : null;
+      lines = json ? polish(linesFromJson3(json, lang), lang) : [];
     } catch {
-      return null; // RATE_LIMITED (429) or bridge failure → our own translation
+      lines = []; // RATE_LIMITED (429) or bridge failure → our own translation
     }
+    if (!lines.length) { tlangFailedAt.set(k, Date.now()); return null; }
+    tlangFailedAt.delete(k);
+    return lines;
   };
 
   const finish = async (lines: Line[]): Promise<Line[]> => {
@@ -228,6 +257,40 @@ async function getLinesRaw(videoId: string, lang: Lang, onProgress?: (message: s
   const lr = await runChunks(src, local, LOCAL_CHUNK, opts, onDone, fx);
   if (lr) return use(lr);
 
+  // v1.2.1 (T): free offline translation in the extension (Chrome Translator there, else Opus-MT, downloaded once).
+  const fromCode = track.languageCode;
+  const route = offlineRoute(fromCode, lang);
+  let offErr: { error: ErrorCode; message?: string } | null = null;
+  if (route) {
+    const offline: Tx = async (texts) => {
+      const out: string[] = [];
+      const t0 = Date.now();
+      for (const [a, b] of evenBatches(texts.length, OFFLINE_BATCH)) {
+        for (;;) {
+          const r = await sendToSW({ type: 'OFFLINE_TRANSLATE', texts: texts.slice(a, b), from: fromCode, to: lang }, 75_000);
+          if (!r.ok) { offErr = { error: r.error, message: r.message }; return null; }
+          if (r.pending) {
+            if ((opts?.isAlive && !opts.isAlive()) || Date.now() - t0 > OFFLINE_DOWNLOAD_MAX_MS) {
+              offErr = { error: 'TIMEOUT', message: 'the download did not finish' };
+              return null;
+            }
+            say(`Downloading ${langName} translator (offline, once)… ${Math.round((r.progress ?? 0) * 100)}%`);
+            await sleep(_offlineTiming.pollMs);
+            continue;
+          }
+          if (!r.texts || r.texts.length !== b - a) { offErr = { error: 'NO_TRANSLATION', message: 'wrong line count' }; return null; }
+          if (a === 0 && out.length === 0) say(`Translating to ${langName} (offline)…`);
+          out.push(...r.texts);
+          break;
+        }
+      }
+      return out;
+    };
+    say(`Translating to ${langName} (offline)…`);
+    const or = await runChunks(src, offline, OFFLINE_CHUNK, opts, onDone, fx, OFFLINE_FIRST);
+    if (or) return use(or);
+  }
+
   if (asr) {
     const t = await tryTlang();
     if (t) return finish(t);
@@ -247,10 +310,21 @@ async function getLinesRaw(videoId: string, lang: Lang, onProgress?: (message: s
 
   const err = swErr as { error: ErrorCode; message?: string } | null;
   if (err?.error === 'RATE_LIMITED') throw new DubError('RATE_LIMITED', err.message ?? 'Translation rate limit reached. Try again in a minute.');
-  const from = LANG_INFO[langBase(track.languageCode) as Lang]?.name ?? track.languageCode;
-  const why =
-    err?.error === 'NO_KEY'
-      ? `No free ${from} → ${langName} translator is available on this device, and no OpenAI key is set. Add an OpenAI key in AutoDub settings (Engine), or update Chrome.`
-      : `Could not translate this video to ${langName}${err?.message ? ` (${err.message})` : ''}.`;
-  throw new DubError('NO_TRANSLATION', why);
+  throw new DubError('NO_TRANSLATION', noTranslationMessage(track.languageCode, lang, !!route, offErr, err));
+}
+
+/** v1.2.1 (T): user-facing reason when every translator failed — says what actually went wrong (never "update Chrome"). */
+export function noTranslationMessage(
+  fromCode: string, lang: Lang, hasOfflineModel: boolean,
+  offErr: { error: ErrorCode; message?: string } | null, swErr: { error: ErrorCode; message?: string } | null,
+): string {
+  const langName = LANG_INFO[lang]?.name ?? lang;
+  const from = LANG_INFO[langBase(fromCode) as Lang]?.name ?? fromCode;
+  const keyHint = 'add an OpenAI key in AutoDub settings (Engine)';
+  if (swErr && swErr.error !== 'NO_KEY') return `Could not translate this video to ${langName}${swErr.message ? ` (${swErr.message})` : ''}.`;
+  if (!hasOfflineModel) {
+    return `AutoDub has no free offline ${from} → ${langName} translator, and Chrome's built-in translator is not available on this computer. To dub this video, ${keyHint}.`;
+  }
+  const why = offErr?.message ? ` (${offErr.message})` : '';
+  return `The free offline ${from} → ${langName} translator could not be loaded${why}. Check that huggingface.co is reachable (a school or company network may block it) and try again, or ${keyHint}.`;
 }

@@ -9,6 +9,7 @@ import { synthesize } from './tts';
 import { cacheGet, cachePut } from './cache';
 import { onNeuralStatus, onNeuralTts, onOffscreenEvent } from './neural';
 import { isOffscreenEventMsg } from '../offscreen/protocol';
+import { onOfflineTranslate } from './offline';
 
 /** Per-request network budget (§2): abort after 20 s → content falls back. */
 export const SW_TIMEOUT_MS = 20_000;
@@ -101,6 +102,7 @@ export async function handleMessage(msg: SWMsg): Promise<MsgResponse<object>> {
       case 'CACHE_PUT': return await onCachePut(msg);
       case 'NEURAL_TTS': return await onNeuralTts(msg);
       case 'NEURAL_STATUS': return await onNeuralStatus(msg);
+      case 'OFFLINE_TRANSLATE': return await onOfflineTranslate(msg);
     }
   } catch (e) {
     return toMsgError(e);

@@ -17,7 +17,12 @@ export type Msg =
   /** v1.1 neural voices: synthesize on this computer (offscreen Piper). */
   | ({ type: 'NEURAL_TTS' } & NeuralTtsRequest)
   /** v1.1: model download state; `download` starts downloads, `remove` deletes models. */
-  | { type: 'NEURAL_STATUS'; models: string[]; download?: string[]; remove?: string[] };
+  | { type: 'NEURAL_STATUS'; models: string[]; download?: string[]; remove?: string[] }
+  /** v1.2.1 (T): free offline translation (≤ 16 lines) in the offscreen document: Chrome Translator there, else Opus-MT. */
+  | { type: 'OFFLINE_TRANSLATE'; texts: string[]; from: string; to: Lang };
+
+/** v1.2.1 (T): OFFLINE_TRANSLATE result. `pending` = model downloading (poll again); `progress` 0..1. */
+export interface OfflineTranslateResult { texts?: string[]; pending?: boolean; progress?: number; sizeMB?: number; engine?: 'chrome' | 'opus-mt'; computeMs?: number }
 
 export type MsgType = Msg['type'];
 export type MsgOf<T extends MsgType> = Extract<Msg, { type: T }>;
@@ -35,6 +40,7 @@ export interface MsgResultMap {
   TEST_VOICE: {};
   NEURAL_TTS: NeuralTtsResult;
   NEURAL_STATUS: { models: NeuralModelState[] };
+  OFFLINE_TRANSLATE: OfflineTranslateResult;
 }
 
 export interface MsgError { ok: false; error: ErrorCode; message?: string }
@@ -42,7 +48,7 @@ export type MsgResponse<T = {}> = ({ ok: true } & T) | MsgError;
 export type ResponseOf<T extends MsgType> = MsgResponse<MsgResultMap[T]>;
 
 /** Messages handled by the service worker. */
-export const SW_MSG_TYPES = ['TRANSLATE', 'TTS', 'CACHE_GET', 'CACHE_PUT', 'NEURAL_TTS', 'NEURAL_STATUS'] as const;
+export const SW_MSG_TYPES = ['TRANSLATE', 'TTS', 'CACHE_GET', 'CACHE_PUT', 'NEURAL_TTS', 'NEURAL_STATUS', 'OFFLINE_TRANSLATE'] as const;
 export type SWMsg = MsgOf<(typeof SW_MSG_TYPES)[number]>;
 
 export function isMsg(x: unknown): x is Msg {

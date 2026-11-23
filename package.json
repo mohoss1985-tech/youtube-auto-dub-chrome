@@ -1,6 +1,6 @@
 {
   "name": "autodub",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "AutoDub - live AI dubbing of YouTube videos from captions (Chrome MV3 extension, personal use).",
   "type": "module",
@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@diffusionstudio/piper-wasm": "1.0.0",
+    "@huggingface/transformers": "4.3.2",
     "onnxruntime-web": "1.31.1"
   }
 }

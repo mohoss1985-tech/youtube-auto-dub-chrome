@@ -68,7 +68,7 @@ describe('caps emphasis captured before cleanup', () => {
       { start: 5, end: 7, text: 'LAST TO LEAVE WINS!' },
     ], 'en');
     const lines = mergeSentences(cues, 'en');
-    expect(lines[0].text).toBe('This is insane, Chandler!');
+    expect(lines[0].text).toBe('This is incredible, Chandler!');
     expect(lines[0].emph).toEqual(['insane']);
     expect(lines[0].shout).toBeUndefined();
     expect(lines[1].shout).toBe(true);

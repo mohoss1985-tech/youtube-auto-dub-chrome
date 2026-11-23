@@ -46,7 +46,7 @@ describe('speaker markers', () => {
     const lines = linesFromJson3(MRBEAST, 'en');
     expect(lines.map((l) => l.text)).toEqual([
       'I just bought a private island!',
-      'No way.',
+      'That is impossible.',
       'How much did it cost?',
       '$10,000?',
       'It was way more.',

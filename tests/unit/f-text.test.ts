@@ -11,13 +11,13 @@ describe('cleanSourceText (EN)', () => {
     ["Um, so, like, we're gonna give away $10,000 to whoever stays the longest.", "So, we're going to give away $10,000 to whoever stays the longest."],
     ["I- I- I can't believe it, you know?", "I can't believe it."],
     ['Karl, uh, w-what are you doing?', 'Karl, what are you doing?'],
-    ['This is INSANE, Chandler!', 'This is insane, Chandler!'],
+    ['This is INSANE, Chandler!', 'This is incredible, Chandler!'],
     ['MRBEAST JUST GAVE ME $1.5 MILLION', 'MrBeast just gave me $1.5 million'],
     ["I mean, it's kinda crazy.", "It's kind of crazy."],
   ];
   const nba: [string, string][] = [
-    ['LEBRON JAMES WITH THE THREE-POINTER FOR THE WIN!', 'LeBron James with the three-pointer for the win!'],
-    ['He hit a 3-pointer at the buzzer, the the crowd went wild.', 'He hit a 3-pointer at the buzzer, the crowd went wild.'],
+    ['LEBRON JAMES WITH THE THREE-POINTER FOR THE WIN!', 'LeBron James with the three-point shot for the win!'],
+    ['He hit a 3-pointer at the buzzer, the the crowd went wild.', 'He hit a three-point shot at the buzzer, the crowd got very excited.'],
     ['Stephen Curry scored 62 points vs the Lakers.', 'Stephen Curry scored 62 points vs the Lakers.'],
     ['The NBA MVP, uh, is here.', 'The NBA MVP, is here.'],
   ];

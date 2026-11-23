@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "AutoDub",
   "short_name": "AutoDub",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Live AI dubbing of YouTube videos from their captions. Personal use. No server, no account.",
   "minimum_chrome_version": "138",
   "permissions": ["storage", "offscreen", "unlimitedStorage"],

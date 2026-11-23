@@ -41,7 +41,25 @@ export type WorkerEvent =
   | { event: 'error'; model: string; message: string };
 
 /** SW → offscreen document. */
-export interface OffscreenMsg { target: typeof OFFSCREEN_TARGET; req: WorkerReq }
+export interface OffscreenMsg { target: typeof OFFSCREEN_TARGET; req: WorkerReq | MtReq }
+
+/** v1.2.1 (T): offline translation (offscreen Translator API, else Opus-MT in mt-worker.js). */
+export interface MtReq { op: 'mt'; texts: string[]; from: string; to: string }
+export type MtRes =
+  | {
+    ok: true;
+    texts?: string[];
+    /** Opus-MT model still downloading/loading → no texts yet; poll again. */
+    pending?: boolean;
+    /** Download progress 0..1 (with `pending`). */
+    progress?: number;
+    /** Total download size (MB) of the models being fetched. */
+    sizeMB?: number;
+    engine?: 'chrome' | 'opus-mt';
+    /** Wall time of this batch (ms). */
+    computeMs?: number;
+  }
+  | { ok: false; code: 'NO_TRANSLATION' | 'ENGINE_ERROR'; message?: string };
 /** Offscreen document → SW (download finished/failed). */
 export interface OffscreenEventMsg { target: typeof SW_TARGET; ev: WorkerEvent }
 

@@ -39,6 +39,16 @@ const builds = [
     // piper_phonemize.js has Node-only branches (never run in a browser).
     external: ['fs', 'path', 'crypto'],
   },
+  // v1.2.1 (T): free offline translation (Opus-MT via transformers.js). Its ORT import is pointed at the
+  // onnxruntime-web/wasm build already bundled for Piper, so it reuses ort/ort-wasm-simd-threaded.wasm (no CDN, no JSEP).
+  {
+    ...common, entryPoints: ['src/offscreen/mt-worker.ts'], outfile: path.join(outdir, 'mt-worker.js'), format: 'esm',
+    alias: {
+      'onnxruntime-web/webgpu': path.resolve('node_modules/onnxruntime-web/dist/ort.wasm.bundle.min.mjs'),
+      'onnxruntime-common': path.resolve('node_modules/onnxruntime-common/dist/esm/index.js'),
+    },
+    external: ['fs', 'path', 'url', 'sharp', 'onnxruntime-node'],
+  },
 ];
 
 function copyStatic() {

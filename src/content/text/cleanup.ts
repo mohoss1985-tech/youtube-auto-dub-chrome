@@ -53,6 +53,37 @@ const NORMALISE: [RegExp, string][] = [
   [/\by'all\b/giu, 'you all'],
 ];
 
+/**
+ * v1.2.1: English sports / YouTube slang → plain English, so the offline translator (Opus-MT) gets it right.
+ * Opus-MT turned "pulls up from half court" into "sort de la demi-tribu" and "seconds left" into "secondes à gauche".
+ */
+export const SLANG: [RegExp, string][] = [
+  [/\bpulls? up from (?:half[- ]?court|the logo)\b/giu, 'shoots from the middle of the court'],
+  [/\bfrom (?:half[- ]?court|the logo)\b/giu, 'from the middle of the court'],
+  [/\bfrom downtown\b/giu, 'from very far away'],
+  [/\b(?:and )?(?:it is|it's) good!/giu, 'and it goes in!'],
+  [/\band one\b/giu, 'and he gets a free throw'],
+  [/\bbuzzer[- ]beater\b/giu, 'shot at the last second'],
+  [/\b(?:three|3)[- ]pointers?\b/giu, 'three-point shot'],
+  [/\b(?:drains|buries|knocks down|cashes) it\b/giu, 'scores'],
+  [/\b(?:drains|buries|knocks down|cashes) (?:the|a) (three|shot|jumper|triple)\b/giu, 'scores the $1'],
+  [/\bjumper\b/giu, 'jump shot'],
+  [/\bis on fire\b/giu, 'is playing incredibly well'],
+  [/\bbreaks? (?:his|her) ankles\b/giu, 'dribbles past him'],
+  [/\bposterized\b/giu, 'dunked over'],
+  [/\bdown by (\w+)\b/giu, 'losing by $1 points'],
+  [/\bup by (\w+)\b/giu, 'winning by $1 points'],
+  [/\b(seconds?|minutes?) left\b/giu, '$1 remaining'],
+  [/\bgive it up for\b/giu, 'applause for'],
+  [/\bwent wild\b/giu, 'got very excited'],
+  [/\bgoes wild\b/giu, 'gets very excited'],
+  [/\bgoing wild\b/giu, 'getting very excited'],
+  [/\blet'?s go+\b/giu, 'come on'],
+  [/\binsane\b/giu, 'incredible'],
+  [/\bno way\b/giu, 'that is impossible'],
+  [/\bbro\b/giu, 'my friend'],
+];
+
 /** "I- I- I think" → "I think", "w-what" → "what", "the the" → "the". */
 export function dropStutters(t: string): string {
   let s = t;
@@ -125,6 +156,10 @@ export function cleanSourceText(raw: string, lang: string): string {
   }
   t = dropStutters(t);
   t = deShout(t);
+  if (en) {
+    for (const [re, to] of SLANG) t = t.replace(re, (m, ...g) => keepCase(m, to.replace(/\$(\d)/g, (_, i) => String(g[Number(i) - 1] ?? ''))));
+    t = t.replace(/\s{2,}/g, ' ');
+  }
   // Tidy punctuation left behind by removals.
   t = t
     .replace(/^fr\b/i.test(lang) ? /\s+([,.])/g : /\s+([,.!?;:])/g, '$1')

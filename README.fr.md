@@ -62,7 +62,7 @@ Sous-titres YouTube ──► phrases ──► traduction ──► voix ──
                                       d'abord)        ou votre clé IA)
 ```
 
-- **Traduction, gratuite d'abord :** sous-titres déjà dans votre langue → sous-titres traduits par YouTube → **traducteur intégré de Chrome** (tourne sur votre ordinateur, télécharge un pack de langue la première fois) → OpenAI, seulement si vous ajoutez une clé.
+- **Traduction, gratuite d'abord :** sous-titres déjà dans votre langue → sous-titres traduits par YouTube → traducteur intégré de Chrome → **traducteur hors ligne d'AutoDub** (gratuit, tourne sur votre ordinateur, ~110 Mo téléchargés une fois par langue) → OpenAI, seulement si vous ajoutez une clé.
 - **Synchronisé :** la voix suit l'horloge de la vidéo. Pause, avance, changement de vitesse : le doublage suit. Pendant les pubs, le doublage s'arrête et la pub passe normalement.
 - **Voix continue :** une phrase n'est jamais coupée au milieu. Si elle déborde, la suivante attend puis parle un peu plus vite pour rattraper.
 - **Homme ou femme :** AutoDub écoute la hauteur de la voix d'origine et choisit une voix d'homme ou de femme. Les indications des sous-titres comme `[Homme]` passent avant cette estimation.
@@ -104,7 +104,7 @@ TypeScript, Manifest V3, esbuild, Vitest, Playwright. Aucune dépendance à l'ex
 | Commande | Rôle |
 |---|---|
 | `npm install && npm run build` | construit l'extension dans `dist/` |
-| `npm test` | 340 tests unitaires |
+| `npm test` | 356 tests unitaires |
 | `npm run typecheck` | TypeScript |
 | `npx playwright test` | captures de la fenêtre + test de fumée |
 
