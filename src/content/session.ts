@@ -205,14 +205,14 @@ export class DubSession {
       plan: (line, next) => this.planFor(line, next),
       onLineStart: (plan) => this.onLineStart(plan),
       onLineEnd: (plan, overflowMs) => this.onLineEnd(plan, overflowMs),
-      onDuck: (on) => this.watcher?.duck(on, this.settings.duckLevel),
+      onDuck: (on) => { if (!this.settings.holdDuck) this.watcher?.duck(on, this.settings.duckLevel); },
       onTick: (now) => this.pump(now),
     });
     this.scheduler.start();
     if (video.paused) this.scheduler.pause();
     this.pumpTimer = setInterval(() => this.pump(), 1000);
     if (this.watcher.isAdShowing()) this.onAdStart();
-    else this.setStatus({ state: 'dubbing', videoId: this.videoId });
+    else { this.holdDuck(); this.setStatus({ state: 'dubbing', videoId: this.videoId }); }
   }
 
   /** Stop speech, restore volume, remove listeners. Idempotent. */
@@ -295,6 +295,9 @@ export class DubSession {
       return;
     }
     if (prev.duckLevel !== s.duckLevel) this.watcher?.setDuckLevel(s.duckLevel);
+    if (prev.holdDuck !== s.holdDuck && this.status.state === 'dubbing') {
+      if (s.holdDuck) this.holdDuck(); else this.watcher?.duck(false);
+    }
     if (prev.dubVolume !== s.dubVolume) {
       try { this.handles.forEach((h) => h.setVolume?.(s.dubVolume)); } catch { /* ignore */ }
     }
@@ -573,7 +576,13 @@ export class DubSession {
     const v = this.video;
     this.scheduler.seek(v?.currentTime ?? 0);
     if (!v?.paused) this.scheduler.resume();
+    this.holdDuck();
     this.setStatus({ ...this.status, state: 'dubbing' });
+  }
+
+  /** holdDuck: keep the original audio at duckLevel for the whole dub (kids hear only the dub). */
+  private holdDuck(): void {
+    if (this.settings.holdDuck) this.watcher?.duck(true, this.settings.duckLevel);
   }
 }
 

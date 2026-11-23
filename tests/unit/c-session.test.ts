@@ -131,6 +131,20 @@ describe('DubSession', () => {
     s.stop();
   });
 
+  it('holdDuck: original stays low between lines while dubbing', async () => {
+    const { s, video, engines } = setup();
+    await s.start();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(video.volume).toBeLessThan(0.2); // ducked as soon as dubbing starts
+    await play(video, 1.0);
+    engines[0].played[0]?.end('ended');
+    await play(video, 3.0); // gap between lines
+    await vi.advanceTimersByTimeAsync(500);
+    expect(video.volume).toBeLessThan(0.2);
+    s.stop();
+    expect(video.volume).toBeCloseTo(0.8, 5);
+  });
+
   it('stop restores ducked volume and is idempotent', async () => {
     const { s, video, engines } = setup();
     await s.start();

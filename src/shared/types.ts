@@ -28,6 +28,8 @@ export interface Settings {
   showSubtitles: boolean;
   translateModel: string;
   matchSpeakerGender: boolean;
+  /** Keep the original audio low for the whole dub, not only while a line plays (default true). */
+  holdDuck: boolean;
 }
 
 export interface Secrets { openaiKey?: string; elevenKey?: string }

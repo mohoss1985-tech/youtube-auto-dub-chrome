@@ -38,7 +38,7 @@ test('dubs a captioned video, first line < 5 s', async ({ context, extensionId }
   await ext.goto(`chrome-extension://${extensionId}/popup.html`);
   await ext.evaluate(async (lang) => {
     const { settings = {} } = await chrome.storage.local.get('settings');
-    await chrome.storage.local.set({ settings: { ...settings, targetLang: lang } });
+    await chrome.storage.local.set({ settings: { ...(settings as object), targetLang: lang } });
   }, LANG);
 
   await page.bringToFront();

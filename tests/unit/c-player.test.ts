@@ -50,6 +50,21 @@ describe('PlayerWatcher', () => {
     expect(v.volume).toBeCloseTo(0.3, 5);
   });
 
+  it('holds the duck when YouTube resets video.volume behind our back', () => {
+    vi.useFakeTimers();
+    const v = new FakeVideo();
+    const w = new PlayerWatcher(v as unknown as HTMLVideoElement, null, {});
+    w.start();
+    w.duck(true, 0.1);
+    vi.advanceTimersByTime(200);
+    expect(v.volume).toBeCloseTo(0.08, 5);
+    v.userVolume(1); // YouTube's player writes its own volume back
+    vi.advanceTimersByTime(1);
+    expect(v.volume).toBeCloseTo(0.1, 5); // re-ducked on top of the new baseline
+    w.stop();
+    expect(v.volume).toBeCloseTo(1, 5);
+  });
+
   it('uses a gain sink instead of video.volume when given', () => {
     vi.useFakeTimers();
     const v = new FakeVideo();

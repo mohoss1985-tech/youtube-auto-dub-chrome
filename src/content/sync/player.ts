@@ -178,12 +178,21 @@ export class PlayerWatcher {
   private onVolumeChange(): void {
     const v = this.video.volume;
     if (this.lastSet != null && Math.abs(v - this.lastSet) < 0.005) return; // our own write
-    // The user moved the volume: that is the new baseline; drop any duck in progress.
+    // Someone else wrote the volume (the user's slider, or YouTube's player resetting it).
+    // That value is the new baseline; if we are ducked, re-apply the duck on top of it
+    // (YouTube resets video.volume on its own, which used to un-duck the original audio).
     this.stopRamp();
     this.userVolume = clamp01(v);
     this.lastSet = null;
-    if (!this.gainSink) this.level = 1;
+    if (this.gainSink || this.level >= 1) return;
+    if (this.reapply) return;
+    this.reapply = setTimeout(() => {
+      this.reapply = null;
+      if (this.level < 1 && !this.gainSink) this.writeVolume(this.userVolume * this.level);
+    }, 0);
   }
+
+  private reapply: ReturnType<typeof setTimeout> | null = null;
 }
 
 function clamp01(v: number): number {
