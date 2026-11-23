@@ -1,0 +1,29 @@
+/* AutoDub popup tokens (§6). Owner: D. */
+:root {
+  --accent: #3d5afe;
+  --accent-hover: #2f49e0;
+  --text: #111418;
+  --muted: #5b6470;
+  --border: #e6e8eb;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --ok: #1e8e3e;
+  --warn: #b06000;
+  --error: #c5221f;
+  --fs-12: 12px; --fs-14: 14px; --fs-16: 16px; --fs-20: 20px;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 16px; --sp-4: 24px; --sp-5: 32px;
+  --r-control: 8px; --r-card: 12px;
+  font-family: -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14171b; --surface: #1c2026; --text: #e8eaed; --muted: #9aa3ae; --border: #2a3038; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { width: 340px; background: var(--bg); color: var(--text); font-size: var(--fs-14); line-height: 1.4; }
+.popup { padding: var(--sp-3); }
+.header { display: flex; flex-direction: column; gap: var(--sp-1); }
+.title { margin: 0; font-size: var(--fs-20); font-weight: 600; }
+.status { margin: 0; color: var(--muted); font-size: var(--fs-12); }
+.footer { padding: var(--sp-2) var(--sp-3) var(--sp-3); color: var(--muted); font-size: var(--fs-12); border-top: 1px solid var(--border); }
+[dir="rtl"] { text-align: right; }
