@@ -65,11 +65,13 @@ async function setReady(model: string, ready: boolean): Promise<void> {
 export async function onNeuralTts(msg: MsgOf<'NEURAL_TTS'>): Promise<MsgResponse<NeuralTtsResult>> {
   const v = neuralVoice(msg.voice);
   if (!v) return { ok: false, error: 'NO_VOICE', message: `Unknown neural voice ${msg.voice}` };
-  const res = await callOffscreen({ op: 'tts', text: msg.text, voice: v.id });
+  const res = await callOffscreen(msg.prosody ? { op: 'tts', text: msg.text, voice: v.id, prosody: msg.prosody } : { op: 'tts', text: msg.text, voice: v.id });
   if (!res.ok) return { ok: false, error: res.code, message: res.message };
   if (res.pending) return { ok: true, pending: true, progress: typeof res.progress === 'number' ? res.progress : 0 };
   void setReady(v.model, true).catch(() => {});
-  return { ok: true, audioB64: res.audioB64, mime: res.mime ?? 'audio/wav', ms: res.ms, rtf: res.rtf, threads: res.threads };
+  const out: MsgResponse<NeuralTtsResult> = { ok: true, audioB64: res.audioB64, mime: res.mime ?? 'audio/wav', ms: res.ms, rtf: res.rtf, threads: res.threads };
+  if (res.postMs != null) out.postMs = res.postMs;
+  return out;
 }
 
 export async function onNeuralStatus(msg: MsgOf<'NEURAL_STATUS'>): Promise<MsgResponse<{ models: NeuralModelState[] }>> {

@@ -41,6 +41,21 @@ export interface TtsEngine {
   dispose?(): void;
 }
 
+/** v1.2 (E): what an engine needs to render a line expressively (read at prepare/play time). */
+export interface ExpressionContext {
+  /** User "Expression" slider 0..1 (0 = flat v1.1 sound). */
+  expressiveness: number;
+  /** Scene arousal 0..1 from the last ~8 s of the original audio (slow, EMA-smoothed). */
+  arousal: number;
+}
+export type ExpressionSource = () => ExpressionContext;
+/** Engines that can render emotion (neural, Web Speech). */
+export interface ExpressiveEngine { setExpression(src: ExpressionSource | null): void }
+
+export function isExpressive(e: unknown): e is ExpressiveEngine {
+  return !!e && typeof (e as { setExpression?: unknown }).setExpression === 'function';
+}
+
 /**
  * Factory: 'webspeech' → WebSpeechEngine, 'openai' | 'elevenlabs' → AudioEngine (opts: onFallback, speed, send),
  * 'neural' → NeuralEngine (free Piper voices on this computer; opts.onFallback after repeated failures).

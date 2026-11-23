@@ -135,6 +135,8 @@ export interface SynthResult {
 /** Run one utterance through a loaded model. `speaker` = name in speaker_id_map (multi-speaker models). */
 export async function synthesizePcm(
   ort: typeof OrtNS, assets: PhonemizerAssets, model: LoadedModel, text: string, speaker?: string, lengthScale?: number,
+  /** v1.2 (E): per-line inference noise (expressive rendering); absent = the model's defaults. */
+  noise?: { noiseScale?: number; noiseW?: number },
 ): Promise<SynthResult> {
   const t0 = performance.now();
   const clean = cleanText(text);
@@ -145,7 +147,7 @@ export async function synthesizePcm(
   const feeds: Record<string, OrtNS.Tensor> = {
     input: new ort.Tensor('int64', BigInt64Array.from(ids, (x) => BigInt(x)), [1, ids.length]),
     input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)]), [1]),
-    scales: new ort.Tensor('float32', Float32Array.from([inf.noise_scale ?? 0.667, lengthScale ?? inf.length_scale ?? 1, inf.noise_w ?? 0.8]), [3]),
+    scales: new ort.Tensor('float32', Float32Array.from([noise?.noiseScale ?? inf.noise_scale ?? 0.667, lengthScale ?? inf.length_scale ?? 1, noise?.noiseW ?? inf.noise_w ?? 0.8]), [3]),
   };
   const map = model.config.speaker_id_map ?? {};
   if ((model.config.num_speakers ?? 1) > 1 || Object.keys(map).length > 1) {

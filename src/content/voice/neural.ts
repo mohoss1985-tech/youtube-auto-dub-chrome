@@ -3,7 +3,10 @@
 // While a model is still downloading (or on an error) the line is voiced by Web Speech instead: never silence.
 import { DubError, type Gender, type Lang, type Line } from '../../shared/types';
 import { sendToSW, type Msg, type ResponseOf } from '../../shared/messages';
-import type { PlayHandle, Prepared, TtsEngine } from './engine';
+import type { ExpressionSource, PlayHandle, Prepared, TtsEngine } from './engine';
+import { prosodyFor, prosodyKey } from '../../shared/prosody';
+import type { ProsodyParams } from '../../shared/types';
+import { analyzeEmotion } from '../text/emotion';
 import { AudioEngine, b64ToBlob } from './audio';
 import { WebSpeechEngine } from './webspeech';
 import { pickVoiceFor } from './voices';
@@ -41,6 +44,24 @@ export class NeuralEngine implements TtsEngine {
   private failed = false;
   /** Last download progress seen (0..1) while a model downloads; undefined when ready. */
   downloadProgress: number | undefined;
+  /** v1.2 (E): expressive rendering context (null = v1.1 sound). */
+  private expression: ExpressionSource | null = null;
+
+  /** v1.2 (E): render lines with emotion (Piper noise + intonation/energy post-processing). Forwards to the Web Speech fallback. */
+  setExpression(src: ExpressionSource | null): void {
+    this.expression = src;
+    const w = this.web as TtsEngine & { setExpression?: (s: ExpressionSource | null) => void };
+    try { w.setExpression?.(src); } catch { /* ignore */ }
+  }
+
+  /** Prosody of a line now (undefined when expressiveness is 0 or no context). */
+  private prosodyOf(line: Line): ProsodyParams | undefined {
+    if (!this.expression) return undefined;
+    let ctx;
+    try { ctx = this.expression(); } catch { return undefined; }
+    if (!ctx || !(ctx.expressiveness > 0)) return undefined;
+    return prosodyFor(line.emotion ?? analyzeEmotion(line), line.text, ctx.arousal, ctx.expressiveness);
+  }
 
   constructor(opts: NeuralEngineOptions = {}) {
     this.opts = opts;
@@ -54,22 +75,23 @@ export class NeuralEngine implements TtsEngine {
   prepare(line: Line, lang: Lang, voice?: string): Promise<Prepared> {
     const v = neuralVoice(voice)?.lang === lang ? neuralVoice(voice)! : defaultNeuralVoice(lang);
     if (!v) return this.viaWeb(line, lang, 'unknown');
-    const key = `${v.id}|${line.id}|${line.text}`;
+    const prosody = this.prosodyOf(line);
+    const key = prosody ? `${v.id}|${line.id}|${line.text}|${prosodyKey(prosody)}` : `${v.id}|${line.id}|${line.text}`;
     const hit = this.entries.get(key);
     if (hit) { hit.at = Date.now(); return Promise.resolve(hit.prepared); }
     const p = this.pending.get(key);
     if (p) return p;
-    const job = this.fetchOne(line, lang, v.id, v.model, v.gender, key).finally(() => this.pending.delete(key));
+    const job = this.fetchOne(line, lang, v.id, v.model, v.gender, key, prosody).finally(() => this.pending.delete(key));
     this.pending.set(key, job);
     return job;
   }
 
-  private async fetchOne(line: Line, lang: Lang, voice: string, model: string, gender: Gender, key: string): Promise<Prepared> {
+  private async fetchOne(line: Line, lang: Lang, voice: string, model: string, gender: Gender, key: string, prosody?: ProsodyParams): Promise<Prepared> {
     if (this.failed || (this.pendingUntil.get(model) ?? 0) > Date.now()) return this.viaWeb(line, lang, gender);
     let res: ResponseOf<'NEURAL_TTS'>;
     try {
       const send = this.opts.send ?? ((m) => sendToSW(m, NEURAL_TIMEOUT_MS));
-      res = await send({ type: 'NEURAL_TTS', text: line.text, lang, voice });
+      res = await send(prosody ? { type: 'NEURAL_TTS', text: line.text, lang, voice, prosody } : { type: 'NEURAL_TTS', text: line.text, lang, voice });
     } catch (e) {
       res = { ok: false, error: 'NETWORK', message: e instanceof Error ? e.message : String(e) };
     }

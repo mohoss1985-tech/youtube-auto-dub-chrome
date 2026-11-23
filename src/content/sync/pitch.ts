@@ -219,6 +219,80 @@ export function captionGender(line: Line): Gender {
   return 'unknown';
 }
 
+// ---------------------------------------------------------------- v1.2 (E) scene energy
+
+/** Rolling window of original audio used for the scene arousal (s). */
+export const SCENE_WINDOW_S = 8;
+/** EMA time constant of the scene arousal (s of media time). */
+export const AROUSAL_TAU_S = 6;
+/** Frames quieter than this RMS count as silence (not speech/music energy). */
+const SCENE_SILENCE_RMS = 0.004;
+
+export interface SceneEnergy {
+  /** Median loudness of the last 8 s vs this video's median (dB). */
+  loudDb: number;
+  /** F0 variability of the last 8 s (semitone std of voiced frames). */
+  f0StdSt: number;
+  /** Share of voiced frames in the window. */
+  voicedShare: number;
+  /** Instant arousal 0..1 (before smoothing). */
+  arousal: number;
+}
+
+const median = (a: number[]): number => {
+  if (!a.length) return 0;
+  const s = [...a].sort((x, y) => x - y);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+/**
+ * Energy of the original audio over [t − 8 s, t]: loudness vs the video median and F0 variability → arousal 0..1.
+ * Excited speech (MrBeast, play-by-play) is louder than its own average and swings 4–6 st; calm read speech ~1.5–2 st.
+ */
+export function sceneEnergy(frames: readonly PitchFrame[], t: number, windowS = SCENE_WINDOW_S): SceneEnergy | null {
+  const all = frames.filter((f) => f.rms != null && f.rms > SCENE_SILENCE_RMS && f.t <= t + 0.05);
+  const win = all.filter((f) => f.t >= t - windowS);
+  const inWin = frames.filter((f) => f.t >= t - windowS && f.t <= t + 0.05);
+  if (win.length < 20 || all.length < 20) return null;
+  const vid = median(all.map((f) => f.rms as number));
+  const loudDb = 20 * Math.log10(median(win.map((f) => f.rms as number)) / Math.max(1e-6, vid));
+  const f0s = inWin.map((f) => f.f0).filter((v): v is number => v != null && Number.isFinite(v) && v > 0);
+  let f0StdSt = 0;
+  if (f0s.length >= 8) {
+    const ref = median(f0s);
+    const st = f0s.map((f) => 12 * Math.log2(f / ref));
+    const m = st.reduce((a, b) => a + b, 0) / st.length;
+    f0StdSt = Math.sqrt(st.reduce((a, b) => a + (b - m) * (b - m), 0) / st.length);
+  }
+  const voicedShare = inWin.length ? f0s.length / inWin.length : 0;
+  const c01 = (v: number) => Math.min(1, Math.max(0, v));
+  const arousal = c01(0.45 * c01(0.5 + loudDb / 10) + 0.4 * c01((f0StdSt - 1.5) / 4) + 0.15 * c01((voicedShare - 0.15) / 0.5));
+  return { loudDb, f0StdSt, voicedShare, arousal };
+}
+
+/** EMA-smoothed scene arousal (media-time constant 6 s). Re-seeds after a seek. */
+export class SceneArousal {
+  private ema: number | null = null;
+  private lastT = -Infinity;
+  last: SceneEnergy | null = null;
+
+  /** Feed the frames at media time `t` (call every ~0.5 s). */
+  update(frames: readonly PitchFrame[], t: number): number | null {
+    const e = sceneEnergy(frames, t);
+    if (!e) return this.ema;
+    this.last = e;
+    const dt = t - this.lastT;
+    if (this.ema == null || !(dt > 0) || dt > 3) this.ema = e.arousal;
+    else this.ema += (1 - Math.exp(-dt / AROUSAL_TAU_S)) * (e.arousal - this.ema);
+    this.lastT = t;
+    return this.ema;
+  }
+
+  value(fallback = 0.5): number { return this.ema ?? fallback; }
+  reset(): void { this.ema = null; this.lastT = -Infinity; this.last = null; }
+}
+
 interface Graph {
   ctx: AudioContext;
   source: MediaElementAudioSourceNode;
@@ -316,9 +390,20 @@ export class SpeakerPitch {
   /** True when the WebAudio graph exists (ducking should use setGain). */
   hasGraph(): boolean { return !!this.graph; }
 
+  /** v1.2 (E): scene arousal of the original audio (EMA). */
+  readonly scene = new SceneArousal();
+  private sceneAt = -Infinity;
+
+  /** v1.2 (E): scene arousal 0..1 (0.5 until enough audio was heard). */
+  sceneArousal(): number { return this.scene.value(0.5); }
+
   /** Record one frame (sampling loop; public for tests). */
   addFrame(t: number, f0: number | null, rms?: number): void {
     this.frames.push(rms != null ? { t, f0, rms } : { t, f0 });
+    if (Math.abs(t - this.sceneAt) >= 0.5) {
+      this.sceneAt = t;
+      try { this.scene.update(this.frames, t); } catch { /* keep the last value */ }
+    }
     const cutoff = t - FRAME_KEEP_S;
     if (this.frames.length > 4000 || (this.frames[0] && this.frames[0].t < cutoff)) {
       this.frames = this.frames.filter((f) => f.t >= cutoff && f.t <= t + 1);
@@ -395,6 +480,7 @@ export class SpeakerPitch {
     this.setGain(1);
     this.frames = [];
     this.tracker.reset();
+    this.scene.reset();
   }
 
   private sample(): void {

@@ -20,6 +20,9 @@ import type { Clock, Speaker } from './sync/scheduler';
 import { PlayerWatcher } from './sync/player';
 import { SpeakerPitch, captionGender } from './sync/pitch';
 import type { SpeechMeasure } from './voice/webspeech';
+import { isExpressive } from './voice/engine';
+import { EmotionTagger, annotateEmotions, nanoTag, type TagFn } from './text/emotion';
+import { DEFAULT_AROUSAL, speedHint } from '../shared/prosody';
 
 /** Pre-generate audio this far ahead (s). */
 export const PREFETCH_S = 30;
@@ -52,6 +55,8 @@ export interface DubSessionDeps {
   /** v1.1 (F): switch to YouTube's own target-language audio track; null/!switched = dub normally. */
   switchOfficialAudio: (videoId: string, lang: Lang) => Promise<OfficialAudioResult | null>;
   restoreOfficialAudio: (videoId: string) => void;
+  /** v1.2 (E): optional on-device emotion tagger (Gemini Nano); null = text rules only. */
+  tagEmotions: TagFn | null;
 }
 
 export interface FirstLineStat { videoId: string; lang: Lang; engine: EngineId; ms: number; at: number }
@@ -107,6 +112,9 @@ export class DubSession {
   private observedT = -Infinity;
   /** v1.1: we switched YouTube's audio track; restore it on stop. */
   private officialAudio = false;
+  /** v1.2 (E): lines as delivered by the pipeline (before emotion annotation) and the optional Nano tagger. */
+  private rawLines: Line[] = [];
+  private tagger: EmotionTagger | null = null;
 
   constructor(opts: DubSessionOptions) {
     this.opts = opts;
@@ -129,6 +137,8 @@ export class DubSession {
       warmUpNano: realWarmUpNano,
       switchOfficialAudio: realSwitchToOfficialAudio,
       restoreOfficialAudio: realRestoreOfficialAudio,
+      // Nano tagging only in a real extension content script (tests and pages without the hook: rules only).
+      tagEmotions: typeof chrome !== 'undefined' && !!chrome.runtime?.id ? nanoTag : null,
       ...(opts.deps ?? {}),
     };
     this.cal = { voiceSpeed: this.settings.voiceSpeed };
@@ -153,7 +163,8 @@ export class DubSession {
 
     // WebAudio must be created inside the user's click: do it before the first await.
     let pitchReady: Promise<boolean> = Promise.resolve(false);
-    if (this.settings.matchSpeakerGender) {
+    // v1.2 (E): the same audio tap also measures scene energy for expressive voices.
+    if (this.settings.matchSpeakerGender || this.settings.expressiveness > 0) {
       try {
         this.pitch = this.d.createPitch(video);
         pitchReady = this.pitch.startAsync();
@@ -218,6 +229,10 @@ export class DubSession {
     }
     if (!alive()) return;
     if (!lines.length) return this.fail('NO_CAPTIONS', 'This video has no usable captions');
+    if (this.settings.expressiveness > 0 && this.d.tagEmotions) {
+      const tag = this.d.tagEmotions;
+      this.tagger = new EmotionTagger({ tag, isAlive: alive, onChange: () => { if (alive()) this.applyLines(this.rawLines); } });
+    }
     this.applyLines(lines);
 
     // Engine + voices.
@@ -310,6 +325,7 @@ export class DubSession {
     this.prepared.clear();
     this.ready.clear();
     this.inflight = 0;
+    this.tagger = null;
     this.setCurrent(null);
     void wasActive;
   }
@@ -357,6 +373,7 @@ export class DubSession {
     this.cal = { ...this.cal, voiceSpeed: s.voiceSpeed };
     if (!this.active) return;
     if (prev.voiceSpeed !== s.voiceSpeed) this.scheduler?.replan();
+    if (prev.expressiveness !== s.expressiveness) this.onExpressivenessChanged();
     const lang = s.targetLang;
     const restart = prev.targetLang !== s.targetLang || prev.engine !== s.engine
       || prev.voiceByLang[lang] !== s.voiceByLang[lang] || prev.matchSpeakerGender !== s.matchSpeakerGender || prev.continuous !== s.continuous
@@ -413,7 +430,11 @@ export class DubSession {
   /** Install a (possibly longer) line list; live scheduler keeps its place by time. */
   private applyLines(lines: Line[]): void {
     if (!lines.length) return;
-    this.lines = [...lines].sort((a, b) => a.start - b.start);
+    this.rawLines = lines;
+    // v1.2 (E): emotion known ahead (text rules, then Nano tags as they arrive).
+    if (this.tagger) this.tagger.feed(lines, this.video?.currentTime ?? 0);
+    const annotated = annotateEmotions(lines, this.tagger?.tags);
+    this.lines = [...annotated].sort((a, b) => a.start - b.start);
     this.lineIndex = new Map(this.lines.map((l, i) => [l.id, i]));
     this.observedT = Math.min(this.observedT, this.video?.currentTime ?? this.observedT);
     this.scheduler?.setLines(this.lines);
@@ -425,6 +446,8 @@ export class DubSession {
     // voiceSpeed is applied through the fit rate, so no provider `speed` (it would apply twice).
     this.engine = id === 'webspeech' ? this.d.createEngine(id) : this.d.createEngine(id, { onFallback: (e) => this.onEngineError(e) });
     this.engineId = id;
+    // v1.2 (E): expressive rendering reads the slider and the scene arousal at prepare/play time.
+    if (isExpressive(this.engine)) this.engine.setExpression(() => ({ expressiveness: this.settings.expressiveness, arousal: this.sceneArousal() }));
     // Web Speech reports measured speech time per line (onstart→onend) for per-voice calibration.
     const eng = this.engine as TtsEngine & { onMeasure?: (m: SpeechMeasure) => void };
     if (eng && id === 'webspeech') eng.onMeasure = (m) => this.onMeasure(m);
@@ -498,18 +521,40 @@ export class DubSession {
     if (p.predicted() !== before) this.scheduler?.replan();
   }
 
+  /** v1.2 (E): scene arousal of the original audio (0.5 when it cannot be measured). */
+  private sceneArousal(): number {
+    try { return this.pitch?.sceneArousal?.() ?? DEFAULT_AROUSAL; } catch { return DEFAULT_AROUSAL; }
+  }
+
+  /** v1.2 (E): new Expression level: re-render upcoming neural lines that have not started, replan. */
+  private onExpressivenessChanged(): void {
+    if (this.engineId !== 'webspeech') {
+      const t = this.video?.currentTime ?? 0;
+      for (const l of this.lines) {
+        if (l.start <= t + 0.5 || l.id === this.current?.id) continue;
+        this.prepared.delete(l.id);
+        this.ready.delete(l.id);
+      }
+      this.pump();
+    }
+    this.scheduler?.replan();
+  }
+
   /** Continuous-mode plan of the whole track: per-line voice speed factor (calibrated, or exact from known audio length). */
   private planTrackFor(lines: readonly Line[]): PacedPlan[] {
     const lang = this.settings.targetLang;
     // Pace reference = mean speed of the voices in use, so male and female voices sound equally fast.
     const keys = new Set([...this.voiceByGender.values()].map((v) => this.voiceKey(v)));
     const ref = [...keys].reduce((acc, k) => acc + this.vcal.factor(k), 0) / Math.max(1, keys.size);
+    const arousal = this.sceneArousal();
     return planTrack(lines, (l) => {
       const u = estimateMs(l.text, lang);
       const voice = this.voiceKey(this.voiceFor(l));
       const known = this.ready.get(l.id)?.knownMs;
       const f = known != null && known > 0 && u > 0 ? Math.min(2, Math.max(0.5, u / known)) : this.vcal.factor(voice);
-      return { u, f, voice };
+      // v1.2 (E): emotion speed hint (excited a touch quicker); 1 at Expression 0 → v1.1 plan.
+      const hint = speedHint(l.emotion, arousal, this.settings.expressiveness);
+      return hint !== 1 ? { u, f, voice, hint } : { u, f, voice };
     }, { voiceSpeed: this.settings.voiceSpeed, refFactor: ref });
   }
 

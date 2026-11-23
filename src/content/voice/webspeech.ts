@@ -2,7 +2,9 @@
 import type { Lang, Line } from '../../shared/types';
 import { LANG_INFO } from '../../shared/settings';
 import { CPS } from '../sync/fit';
-import type { PlayEnd, Prepared, PlayHandle, TtsEngine } from './engine';
+import type { ExpressionSource, PlayEnd, Prepared, PlayHandle, TtsEngine } from './engine';
+import { webSpeechProsody } from '../../shared/prosody';
+import { analyzeEmotion } from '../text/emotion';
 import { bestWebVoiceSync, findWebVoice, loadWebVoices } from './voices';
 
 /** Max characters per utterance (Chrome cuts network voices after ~15 s). */
@@ -51,6 +53,9 @@ interface Job {
   utts: (SpeechSynthesisUtterance | null)[];
   rate: number;
   volume: number;
+  /** v1.2 (E): expressive utterance pitch and volume multiplier (absent = v1.1). */
+  pitch?: number;
+  volMul?: number;
   finished: boolean;
   resolve: (e: PlayEnd) => void;
   handle: PlayHandle;
@@ -78,6 +83,10 @@ export class WebSpeechEngine implements TtsEngine {
   private armedFor: SpeechSynthesisUtterance | null = null;
   /** Called after each fully spoken line with its measured speech time (calibration). */
   onMeasure?: (m: SpeechMeasure) => void;
+  private expression: ExpressionSource | null = null;
+
+  /** v1.2 (E): per-line pitch/volume from the line's emotion (null or expressiveness 0 = v1.1). */
+  setExpression(src: ExpressionSource | null): void { this.expression = src; }
 
   /** No network; resolves with a text-only Prepared once voices are loaded (≤ 3 s). */
   async prepare(line: Line, lang: Lang, voice?: string): Promise<Prepared> {
@@ -113,6 +122,13 @@ export class WebSpeechEngine implements TtsEngine {
       setRate: (r: number) => { job.rate = r; }, // applies to chunks queued later (requeue)
       setVolume: (v: number) => { job.volume = v; },
     };
+    if (this.expression) {
+      try {
+        const ctx = this.expression();
+        const wp = webSpeechProsody(p.line.emotion ?? analyzeEmotion(p.line), ctx.arousal, ctx.expressiveness);
+        if (wp) { job.pitch = wp.pitch; job.volMul = wp.volume; }
+      } catch { /* plain line */ }
+    }
     this.jobs.push(job);
     this.handles.add(job.handle);
     this.enqueue(job);
@@ -145,7 +161,8 @@ export class WebSpeechEngine implements TtsEngine {
       const v = findWebVoice(job.p.voice) ?? bestWebVoiceSync(job.p.lang); // re-applied every utterance
       if (v) { u.voice = v; u.lang = v.lang; }
       u.rate = clampRate(job.rate);
-      u.volume = clamp01(job.volume);
+      u.volume = clamp01(job.volume * (job.volMul ?? 1));
+      if (job.pitch != null) u.pitch = Math.min(2, Math.max(0, job.pitch));
       const idx = i;
       u.onstart = () => {
         if (job.utts[idx] !== u) return;

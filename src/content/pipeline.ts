@@ -9,7 +9,7 @@ import { DubError, type CaptionTrack, type Cue, type ErrorCode, type Json3, type
 import { isAsrTrack, langBase, mergeSentences, parseJson3, pickTrack } from './captions';
 import { translateLocal } from './translate-local';
 import { getJson3, getPlayerResponse } from './yt';
-import { cleanSourceText } from './text/cleanup';
+import { cleanSourceText, emphasisOf } from './text/cleanup';
 import { speechFriendly } from './text/glossary';
 import { FrenchShortener, nanoRewrite, type RewriteFn } from './text/nano';
 import { estimateMs } from './sync/fit';
@@ -43,8 +43,8 @@ export function _resetPipeline(): void {
   tlangTried.clear();
 }
 
-/** `:2` = v1.1 text (cleanup, glossary, speaker flags); v1.0 entries are ignored. */
-export const cacheKey = (videoId: string, lang: Lang) => `lines:${videoId}:${lang}:2`;
+/** `:3` = v1.2 (caption emphasis/shout flags for the emotion pass); `:2` = v1.1 text (cleanup, glossary, speaker flags). Older entries are ignored. */
+export const cacheKey = (videoId: string, lang: Lang) => `lines:${videoId}:${lang}:3`;
 
 /** Clean cues (fillers, stutters, shouting, leftover tags); a dropped cue's speaker change moves to the next cue. */
 export function cleanCues(cues: Cue[], lang: string): Cue[] {
@@ -54,6 +54,10 @@ export function cleanCues(cues: Cue[], lang: string): Cue[] {
     const text = cleanSourceText(c.text, lang);
     if (!text) { pendingNew ||= !!c.newSpeaker; continue; }
     const n: Cue = { ...c, text };
+    // v1.2 (E): keep the caption's ALL-CAPS emphasis / shouting (cleanup lowers it) for the emotion pass.
+    const e = emphasisOf(c.text);
+    if (e.shout) n.shout = true;
+    if (e.emph.length) n.emph = e.emph;
     if (pendingNew) n.newSpeaker = true;
     pendingNew = false;
     out.push(n);
@@ -132,7 +136,7 @@ async function runChunks(src: Line[], tx: Tx, chunkSize: number, opts: GetLinesO
 }
 
 /**
- * Full pipeline with SW cache `lines:<videoId>:<lang>:2`. Throws DubError NO_CAPTIONS | NO_TRANSLATION | RATE_LIMITED.
+ * Full pipeline with SW cache `lines:<videoId>:<lang>:3`. Throws DubError NO_CAPTIONS | NO_TRANSLATION | RATE_LIMITED.
  * `onProgress` gets user-facing status text (e.g. "Downloading French translator…").
  * v1.1: with `smartFrench` (fr + onUpdate), over-long lines are shortened by Gemini Nano in the background and
  * delivered through `onUpdate` (never blocks; the cache keeps the unshortened lines).

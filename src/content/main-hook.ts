@@ -7,6 +7,7 @@ import type { CaptionTrack, Json3, PlayerResponse } from '../shared/types';
 import { listAudioTracks, rewriteTimedtextUrl, timedtextVideoId } from './captions';
 import { getTranslatorGlobal, runTranslator } from './translate-local';
 import { acceptRewrite, getLanguageModelGlobal, makeNanoRewriter, runWarmUp, type RewriteFn, type RewriteRequest } from './text/nano';
+import { makeNanoTagger, type TagFn } from './text/emotion';
 
 type AnyPlayer = HTMLElement & {
   getPlayerResponse?: () => PlayerResponse | null;
@@ -285,6 +286,7 @@ export function restoreAudioTrack(videoId: string, doc: Document = document): bo
 // ---------------------------------------------------------------- Gemini Nano in the page world (v1.1, F)
 
 let mainRewriter: RewriteFn | null = null;
+let mainTagger: TagFn | null = null;
 
 // ---------------------------------------------------------------- AD_REQ server
 
@@ -313,6 +315,12 @@ async function serve(reqId: string, op: string, args: Record<string, unknown>): 
       if (typeof req.fr !== 'string') return null;
       const out = await (mainRewriter ??= makeNanoRewriter(LM))({ fr: req.fr, source: typeof req.source === 'string' ? req.source : undefined, maxChars: Number(req.maxChars) || req.fr.length });
       return acceptRewrite(req.fr, out);
+    }
+    case 'nanoEmotion': {
+      const LM = getLanguageModelGlobal();
+      if (!LM) throw new Error('NETWORK');
+      const texts = Array.isArray(args.texts) ? (args.texts as unknown[]).map(String).slice(0, 16) : [];
+      return texts.length ? (mainTagger ??= makeNanoTagger(LM))(texts) : [];
     }
     case 'nanoWarmup': {
       const LM = getLanguageModelGlobal();

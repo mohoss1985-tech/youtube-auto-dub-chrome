@@ -6,6 +6,8 @@ import createPiperPhonemize from '@diffusionstudio/piper-wasm/build/piper_phonem
 import { NEURAL_CACHE, modelUrls, neuralVoice } from '../content/voice/neural-catalog';
 import { bytesToB64, encodeWav, normalizePeak, synthesizePcm, trimSilence, type LoadedModel, type PhonemizerAssets, type PiperConfig } from './piper';
 import type { WorkerReq, WorkerRes, WorkerEvent, DownloadProgress } from './protocol';
+import { expressify } from './prosody-dsp';
+import type { ProsodyParams } from '../shared/types';
 
 const BASE = new URL('./', self.location.href).href; // chrome-extension://<id>/
 const MAX_SESSIONS = 3;
@@ -143,7 +145,7 @@ function loadModel(model: string): Promise<LoadedModel> {
 
 let queue: Promise<unknown> = Promise.resolve();
 
-async function tts(text: string, voiceId: string, lengthScale?: number): Promise<WorkerRes> {
+async function tts(text: string, voiceId: string, lengthScale?: number, prosody?: ProsodyParams): Promise<WorkerRes> {
   const v = neuralVoice(voiceId);
   if (!v) return { ok: false, code: 'NO_VOICE', message: `Unknown neural voice ${voiceId}` };
   if (!(await isReady(v.model))) {
@@ -153,18 +155,27 @@ async function tts(text: string, voiceId: string, lengthScale?: number): Promise
   }
   const [assets, model] = await Promise.all([phonemizerAssets(), loadModel(v.model)]);
   const t0 = performance.now();
-  const r = await synthesizePcm(ort, assets, model, text, v.speaker, lengthScale);
-  const pcm = trimSilence(normalizePeak(r.pcm), r.sampleRate);
+  const r = await synthesizePcm(ort, assets, model, text, v.speaker, lengthScale, prosody);
+  let pcm = trimSilence(normalizePeak(r.pcm), r.sampleRate);
+  // v1.2 (E): expressive intonation + energy (duration preserved, so `ms` stays exact). No prosody = v1.1 bytes.
+  let postMs: number | undefined;
+  if (prosody) {
+    const tp = performance.now();
+    try { pcm = expressify(pcm, r.sampleRate, prosody).pcm; } catch { /* keep the plain line */ }
+    postMs = performance.now() - tp;
+  }
   const wav = encodeWav(pcm, r.sampleRate);
   const ms = (pcm.length / r.sampleRate) * 1000;
   const computeMs = performance.now() - t0;
-  return { ok: true, audioB64: bytesToB64(wav), mime: 'audio/wav', ms, computeMs, rtf: computeMs / Math.max(1, ms), threads: ort.env.wasm.numThreads };
+  const res: WorkerRes = { ok: true, audioB64: bytesToB64(wav), mime: 'audio/wav', ms, computeMs, rtf: computeMs / Math.max(1, ms), threads: ort.env.wasm.numThreads };
+  if (postMs != null) res.postMs = postMs;
+  return res;
 }
 
 async function handle(req: WorkerReq): Promise<WorkerRes> {
   switch (req.op) {
     case 'tts': {
-      const run = queue.then(() => tts(req.text, req.voice, req.lengthScale));
+      const run = queue.then(() => tts(req.text, req.voice, req.lengthScale, req.prosody));
       queue = run.catch(() => {});
       return run;
     }

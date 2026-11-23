@@ -72,7 +72,11 @@ export const PLAN_STEP = 0.06;
  * Per-line pacing input. `u` = estimated natural ms at the prior CPS (estimateMs, cpsFactor 1).
  * `f` = how much faster than the prior this line's voice talks (calibrated per voice; exact when the audio duration is known).
  */
-export interface PaceInput { u: number; f: number; voice?: string }
+export interface PaceInput {
+  u: number; f: number; voice?: string;
+  /** v1.2 (E): emotion speed hint (≈ 0.95–1.06, default 1): this line is spoken that much faster than its cluster's pace (still capped). */
+  hint?: number;
+}
 
 export interface PaceOptions {
   voiceSpeed?: number;
@@ -124,7 +128,8 @@ export function planTrack(lines: readonly Line[], input: (line: Line, i: number)
   const q0 = vs * ref; // baseline pace
   const inp = lines.map((l, i) => {
     const x = input(l, i);
-    return { u: Math.max(0, Number.isFinite(x.u) ? x.u : 0), f: okNum(x.f, 1), voice: x.voice };
+    const hint = x.hint != null && Number.isFinite(x.hint) ? Math.min(1.08, Math.max(0.92, x.hint)) : 1;
+    return { u: Math.max(0, Number.isFinite(x.u) ? x.u : 0), f: okNum(x.f, 1), voice: x.voice, hint };
   });
   const q = new Array<number>(n).fill(q0);
   const startAt = lines.map((l) => l.start);
@@ -166,7 +171,7 @@ export function planTrack(lines: readonly Line[], input: (line: Line, i: number)
 
   return lines.map((line, i) => {
     const f = inp[i].f;
-    const rate = Math.min(cap, Math.max(MIN_RATE_FACTOR * vs, q[i] / f));
+    const rate = Math.min(cap, Math.max(MIN_RATE_FACTOR * vs, (q[i] * inp[i].hint) / f));
     const estMs = inp[i].u / f / rate;
     const nx = lines[i + 1];
     const hardEnd = nx ? nx.start - GAP_GUARD_S : line.end + LAST_LINE_TAIL_S;

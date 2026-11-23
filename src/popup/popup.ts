@@ -68,7 +68,7 @@ const KEY_PLACEHOLDER: Record<ApiEngine, string> = { openai: 'sk-…', elevenlab
 
 /** One short test line per language. */
 export const TEST_LINES: Record<Lang, string> = {
-  fr: 'Bonjour ! Voici comment sonne cette voix.',
+  fr: 'Incroyable ! Il a gagné dix mille dollars !',
   ar: 'مرحبًا! هكذا يبدو هذا الصوت.',
   en: 'Hello! This is how this voice sounds.',
   es: '¡Hola! Así suena esta voz.',
@@ -483,6 +483,11 @@ const SHELL = `
     <div class="slider-head"><label for="s-speed">Voice speed</label><span class="slider-val" data-el="speed-val"></span></div>
     <input id="s-speed" type="range" min="${VOICE_SPEED_MIN}" max="${VOICE_SPEED_MAX}" step="0.05" data-el="speed" />
   </div>
+  <div class="slider">
+    <div class="slider-head"><label for="s-expr">Expression</label><span class="slider-val" data-el="expr-val"></span></div>
+    <input id="s-expr" type="range" min="0" max="100" step="5" data-el="expr" aria-describedby="s-expr-ends" />
+    <div class="slider-ends" id="s-expr-ends" aria-hidden="true"><span>Flat</span><span>Lively</span></div>
+  </div>
 </section>
 <section class="sec">
   <div class="row">
@@ -641,11 +646,13 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
   };
   const renderControls = () => {
     const s = vs.settings;
-    const duck = $<HTMLInputElement>('duck'), vol = $<HTMLInputElement>('vol'), speed = $<HTMLInputElement>('speed');
+    const duck = $<HTMLInputElement>('duck'), vol = $<HTMLInputElement>('vol'), speed = $<HTMLInputElement>('speed'), expr = $<HTMLInputElement>('expr');
     duck.value = String(Math.round(s.duckLevel * 100));
     vol.value = String(Math.round(s.dubVolume * 100));
     speed.value = String(s.voiceSpeed);
-    [duck, vol, speed].forEach(setPct);
+    expr.value = String(Math.round(s.expressiveness * 100));
+    [duck, vol, speed, expr].forEach(setPct);
+    $('expr-val').textContent = exprLabel(Number(expr.value));
     $('duck-val').textContent = `${duck.value}%`;
     $('vol-val').textContent = `${vol.value}%`;
     $('speed-val').textContent = `${Number(speed.value).toFixed(2)}×`;
@@ -805,6 +812,7 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
     if (el === 'duck') { setPct(t); $('duck-val').textContent = `${t.value}%`; saveSoon({ duckLevel: Number(t.value) / 100 }); }
     else if (el === 'vol') { setPct(t); $('vol-val').textContent = `${t.value}%`; saveSoon({ dubVolume: Number(t.value) / 100 }); }
     else if (el === 'speed') { setPct(t); $('speed-val').textContent = `${Number(t.value).toFixed(2)}×`; saveSoon({ voiceSpeed: Number(t.value) }); }
+    else if (el === 'expr') { setPct(t); $('expr-val').textContent = exprLabel(Number(t.value)); saveSoon({ expressiveness: Number(t.value) / 100 }); }
   });
 
   root.addEventListener('change', (ev) => {
@@ -913,6 +921,12 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
     renderHeader(); renderBanner();
   });
   root.dataset.ready = 'true';
+}
+
+/** v1.2 (E): Expression slider value text (0 = the v1.1 flat voice). */
+export function exprLabel(pct: number): string {
+  const word = pct <= 0 ? 'Flat' : pct < 40 ? 'Subtle' : pct < 80 ? 'Lively' : 'Very lively';
+  return `${word} · ${pct}%`;
 }
 
 function testError(code: ErrorCode, message?: string): string {

@@ -6,7 +6,8 @@ import { broadcastStatus, isMsg, isSWMsg, toMsgError } from '../shared/messages'
 import { DEFAULT_SETTINGS, loadSettings, onSettingsChanged, saveSettings } from '../shared/settings';
 import { saveFeedback } from '../shared/feedback';
 import { getPlayer, getVideo, getVideoId, isWatchPage } from './yt';
-import { createEngine } from './voice/engine';
+import { createEngine, isExpressive } from './voice/engine';
+import { TEST_AROUSAL } from '../shared/prosody';
 import { listVoices } from './voice/voices';
 import { mountPlayerUI } from './ui/player-ui';
 import type { PlayerUI, PlayerUIApi } from './ui/player-ui';
@@ -15,7 +16,8 @@ import { onNavigate } from './sync/player';
 
 /** One short sentence per language for "Test voice". */
 export const TEST_LINES: Readonly<Record<Lang, string>> = {
-  fr: 'Bonjour ! Voici la voix qui va doubler cette vidéo.',
+  // v1.2 (E): a lively line, so ▶ Test shows the Expression setting.
+  fr: 'Incroyable ! Il a gagné dix mille dollars !',
   ar: 'مرحبا! هذا هو الصوت الذي سيدبلج هذا الفيديو.',
   en: 'Hello! This is the voice that will dub this video.',
   es: '¡Hola! Esta es la voz que doblará este video.',
@@ -166,6 +168,7 @@ function onSettings(next: Settings, prev: Settings): void {
 
 async function testVoice(msg: Extract<Msg, { type: 'TEST_VOICE' }>): Promise<MsgResponse> {
   const engine = createEngine(msg.engine);
+  if (isExpressive(engine)) engine.setExpression(() => ({ expressiveness: st.settings.expressiveness, arousal: TEST_AROUSAL }));
   const line: Line = { id: 'test', start: 0, end: 4, text: TEST_LINES[msg.lang] ?? TEST_LINES.en };
   const p = await engine.prepare(line, msg.lang, msg.voice || undefined);
   const h = engine.play(p, st.settings.voiceSpeed, st.settings.dubVolume);

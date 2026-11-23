@@ -12,6 +12,11 @@
   <img src="screenshots/popup-dark.png" width="260" alt="Dark mode">
 </p>
 
+## New in v1.2 · Emotion in the voice
+
+- **Ups and downs:** each line gets an emotion (excited, question, shout, calm…) from the subtitles and from how lively the scene sounds, and the French voice follows it: wider intonation, higher when excited, questions that rise, stressed key words.
+- **Expression slider** (Flat ↔ Lively) in the popup to choose how lively the dub is.
+
 ## New in v1.1 · Better French, smoother voice
 
 - **Neural voices, free:** natural French voices (a woman and a man) that run on your computer. French uses them by default (Siwis, a woman's voice; Tom when a man speaks). They download once (~60 MB each), then work offline.
@@ -43,6 +48,7 @@ Works in Chrome 138 or newer on Mac, Windows and Linux. Brave and Edge should wo
 | **Voice** + ▶ Test | Choose the voice; each one is labelled Male or Female |
 | **Match speaker's voice** | A man speaking → male voice, a woman → female voice |
 | **Voice speed** | 0.75× (slower, good for small kids) to 1.3× |
+| **Expression** | Flat ↔ Lively: how much emotion the voice puts in (70 % by default) |
 | **Show translated subtitles** | Shows the translated sentence on the video |
 | **Engine** | Free voices (default), or OpenAI / ElevenLabs with your own key |
 
@@ -96,7 +102,7 @@ TypeScript, Manifest V3, esbuild, Vitest, Playwright. No runtime dependencies, n
 | Command | What |
 |---|---|
 | `npm install && npm run build` | build the extension to `dist/` |
-| `npm test` | 289 unit tests |
+| `npm test` | 340 unit tests |
 | `npm run typecheck` | TypeScript |
 | `npx playwright test` | popup screenshots + smoke test |
 

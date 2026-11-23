@@ -202,7 +202,7 @@ export function isPunctuated(cues: Cue[]): boolean {
   return n / cues.length >= 0.15;
 }
 
-interface Piece { start: number; end: number; text: string; gender?: Gender; newSpeaker?: boolean }
+interface Piece { start: number; end: number; text: string; gender?: Gender; newSpeaker?: boolean; emph?: string[]; shout?: boolean }
 
 /** Split a cue at sentence ends inside it; times shared by character count. */
 function splitInternal(c: Cue): Piece[] {
@@ -222,6 +222,14 @@ function splitInternal(c: Cue): Piece[] {
   return share(c, parts);
 }
 
+/** v1.2 (E): emphasis words of a cue that fall in one of its pieces. */
+function emphIn(emph: string[] | undefined, text: string): string[] | undefined {
+  if (!emph?.length) return undefined;
+  const low = text.toLowerCase();
+  const got = emph.filter((w) => low.includes(w));
+  return got.length ? got : undefined;
+}
+
 function share(c: Piece, parts: string[]): Piece[] {
   if (parts.length <= 1) return [{ ...c }];
   const total = parts.reduce((a, p) => a + p.length, 0) || 1;
@@ -234,6 +242,9 @@ function share(c: Piece, parts: string[]): Piece[] {
     const p: Piece = { start, end, text };
     if (c.gender) p.gender = c.gender;
     if (i === 0 && c.newSpeaker) p.newSpeaker = true;
+    if (c.shout) p.shout = true;
+    const em = emphIn(c.emph, text);
+    if (em) p.emph = em;
     return p;
   });
 }
@@ -295,6 +306,8 @@ export function mergeSentences(cues: Cue[], lang: string, opts?: { asr?: boolean
     const line: Line = { id, start: round3(c.start), end: round3(Math.max(c.end, c.start)), text };
     if (c.gender) line.gender = c.gender;
     if (c.newSpeaker) line.newSpeaker = true;
+    if (c.shout) line.shout = true;
+    if (c.emph?.length) line.emph = [...new Set(c.emph)];
     lines.push(line);
   };
 
@@ -309,10 +322,16 @@ export function mergeSentences(cues: Cue[], lang: string, opts?: { asr?: boolean
         p.gender !== c.gender)
     ) flush();
     const open = cur as Piece | null;
-    if (!open) cur = { start: p.start, end: p.end, text: p.text, ...(p.gender ? { gender: p.gender } : {}), ...(p.newSpeaker ? { newSpeaker: true } : {}) };
-    else {
+    if (!open) {
+      cur = { start: p.start, end: p.end, text: p.text, ...(p.gender ? { gender: p.gender } : {}), ...(p.newSpeaker ? { newSpeaker: true } : {}) };
+      if (p.shout) cur.shout = true;
+      if (p.emph?.length) cur.emph = [...p.emph];
+    } else {
       open.text += sep + p.text;
       open.end = Math.max(open.end, p.end);
+      // v1.2 (E): a line is "shouted" when its longer part was; emphasis words add up.
+      if (p.shout && (open.shout || p.text.length >= open.text.length / 2)) open.shout = true;
+      if (p.emph?.length) open.emph = [...(open.emph ?? []), ...p.emph];
     }
     if (!asr && endsSentence((cur as Piece | null)?.text ?? '')) flush();
   }

@@ -142,3 +142,23 @@ export function cleanSourceText(raw: string, lang: string): string {
 function keepCase(src: string, to: string): string {
   return /^\p{Lu}/u.test(src) ? to[0]!.toUpperCase() + to.slice(1) : to;
 }
+
+/**
+ * v1.2 (E): emphasis written in the ORIGINAL caption, read before `deShout` removes it.
+ * `shout` = mostly capitals; `emph` = lower-cased ALL-CAPS words (2+ letters, not known acronyms) of a normal line.
+ */
+export function emphasisOf(raw: string): { shout: boolean; emph: string[] } {
+  const t = String(raw ?? '').replace(/\[[^\]]{0,60}\]|\([^)]{0,40}\)/gu, ' ');
+  const shout = isShouting(t);
+  const emph: string[] = [];
+  if (!shout) {
+    for (const w of t.match(/[\p{L}][\p{L}'’]*/gu) ?? []) {
+      const letters = w.replace(/[^\p{L}]/gu, '');
+      if (letters.length < 2 || letters !== letters.toUpperCase() || letters === letters.toLowerCase()) continue;
+      if (ACRONYMS.has(w.toUpperCase().replace(/['’]S$/u, ''))) continue;
+      const low = w.toLowerCase();
+      if (low !== 'i' && !emph.includes(low)) emph.push(low);
+    }
+  }
+  return { shout, emph };
+}

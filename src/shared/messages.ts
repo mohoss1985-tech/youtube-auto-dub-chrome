@@ -105,7 +105,9 @@ export const BRIDGE_SOURCE = 'autodub' as const;
 /** Bridge ops served by main-hook.ts. 'translate' = Translator API fallback in MAIN world (§3.5). */
 export type BridgeOp = 'playerResponse' | 'json3' | 'audioTracks' | 'translate'
   /** v1.1 (F): Gemini Nano rewrite in MAIN world + download warm-up; official audio-track switch/restore. */
-  | 'nano' | 'nanoWarmup' | 'translatorWarmup' | 'audioTrackSwitch' | 'audioTrackRestore';
+  | 'nano' | 'nanoWarmup' | 'translatorWarmup' | 'audioTrackSwitch' | 'audioTrackRestore'
+  /** v1.2 (E): Gemini Nano emotion tags for a batch of lines (MAIN world). */
+  | 'nanoEmotion';
 
 export type BridgeMsg =
   | { source: typeof BRIDGE_SOURCE; type: 'AD_TIMEDTEXT_URL'; url: string }

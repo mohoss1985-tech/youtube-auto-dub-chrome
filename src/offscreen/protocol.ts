@@ -1,4 +1,5 @@
 // Internal protocol: service worker ⇄ offscreen document ⇄ piper worker. Owner: P (v1.1).
+import type { ProsodyParams } from '../shared/types';
 // Not part of the public Msg union (content/popup use NEURAL_TTS / NEURAL_STATUS via the service worker).
 
 export const OFFSCREEN_TARGET = 'autodub-offscreen' as const;
@@ -7,7 +8,7 @@ export const SW_TARGET = 'autodub-sw' as const;
 export interface DownloadProgress { model: string; loaded: number; total: number; done?: boolean; error?: string }
 
 export type WorkerReq =
-  | { op: 'tts'; text: string; voice: string; lengthScale?: number }
+  | { op: 'tts'; text: string; voice: string; lengthScale?: number; /** v1.2 (E): expressive rendering; absent = v1.1. */ prosody?: ProsodyParams }
   | { op: 'download'; models: string[] }
   | { op: 'remove'; models: string[] }
   | { op: 'status'; models?: string[] }
@@ -24,6 +25,8 @@ export type WorkerRes =
     /** Exact audio duration (ms) at rate 1. */
     ms?: number;
     computeMs?: number;
+    /** v1.2 (E): of which expressive post-processing (ms). */
+    postMs?: number;
     /** Real-time factor = compute time / audio time. */
     rtf?: number;
     /** WASM threads used (1 unless crossOriginIsolated). */

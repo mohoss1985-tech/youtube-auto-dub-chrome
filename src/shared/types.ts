@@ -6,9 +6,44 @@ export type Gender = 'male' | 'female' | 'unknown';
 
 export interface CaptionTrack { baseUrl: string; languageCode: string; kind?: string; vssId: string; name?: string }
 /** Times in seconds. `gender` = caption speaker-label hint ([Man], (femme)…); `newSpeaker` = a `>>` / label speaker change starts here. */
-export interface Cue { start: number; end: number; text: string; gender?: Gender; newSpeaker?: boolean }
+export interface Cue { start: number; end: number; text: string; gender?: Gender; newSpeaker?: boolean; emph?: string[]; shout?: boolean }
 /** One merged sentence. Times in seconds. `source` = original-language text when `text` is translated. `newSpeaker` (v1.1, optional) = a caption speaker change starts at this line. */
-export interface Line { id: string; start: number; end: number; text: string; source?: string; gender?: Gender; newSpeaker?: boolean }
+export interface Line {
+  id: string; start: number; end: number; text: string; source?: string; gender?: Gender; newSpeaker?: boolean;
+  /** v1.2 (E): words written in ALL CAPS in the ORIGINAL captions (lower-cased, before de-shouting). */
+  emph?: string[];
+  /** v1.2 (E): the original caption line was shouted (mostly capitals). */
+  shout?: boolean;
+  /** v1.2 (E): emotion known ahead of playback (text cues, optional Gemini Nano tag). */
+  emotion?: LineEmotion;
+}
+
+/** v1.2 (E): delivery style of a dubbed line. */
+export type EmotionStyle = 'neutral' | 'excited' | 'happy' | 'question' | 'surprised' | 'sad' | 'calm' | 'shout';
+/** v1.2 (E): per-line emotion. `emphasisWords` are words of the TARGET text (`Line.text`) to stress. */
+export interface LineEmotion { style: EmotionStyle; intensity: number; emphasisWords: string[]; by?: 'rules' | 'nano' }
+
+/**
+ * v1.2 (E): expressive rendering of one neural line (Piper inference noise + WAV post-processing).
+ * Absent = the v1.1 sound, byte for byte.
+ */
+export interface ProsodyParams {
+  /** Piper noise_scale (0.55–0.9) and noise_w (0.6–1.1). */
+  noiseScale: number;
+  noiseW: number;
+  /** F0 contour expansion around the line mean (1 = unchanged, 1.2–1.8 expressive). */
+  pitchK: number;
+  /** Mean F0 shift (semitones). */
+  meanShiftSt: number;
+  /** F0 change reached at the end of the line (semitones; + = question rise, − = statement fall). */
+  endShiftSt: number;
+  /** Duration of that final glide (ms). */
+  endMs: number;
+  /** Overall gain (dB) before the soft limiter. */
+  gainDb: number;
+  /** Stressed spans as character fractions [from, to) of the text, with a level bump (dB) and pitch accent (st). */
+  emphasis: { from: number; to: number; db: number; st: number }[];
+}
 /** Output of sync/fit: how to speak one line. `startAt` in seconds (media time), `maxMs` hard cut. */
 export interface Plan { line: Line; rate: number; startAt: number; maxMs: number; trimmed: boolean }
 
@@ -38,6 +73,8 @@ export interface Settings {
   smartFrench: boolean;
   /** v1.1 (F): when YouTube has an official / auto-dubbed audio track in the target language, switch to it instead of TTS. Default true. */
   preferOfficialAudio: boolean;
+  /** v1.2 (E): expressive voice 0 (flat, v1.1 sound) .. 1 (lively). Default 0.7. */
+  expressiveness: number;
 }
 
 export interface Secrets { openaiKey?: string; elevenKey?: string }
@@ -64,9 +101,9 @@ export interface Feedback { videoId: string; lineId: string; lang: Lang; up: boo
 export interface TtsRequest { text: string; lang: Lang; engine: 'openai' | 'elevenlabs'; voice: string; speed?: number }
 export interface TtsResult { audioB64: string; mime: string }
 /** v1.1 neural voices (Piper, on this computer). `voice` = neural voice id (see content/voice/neural-catalog.ts). */
-export interface NeuralTtsRequest { text: string; lang: Lang; voice: string }
+export interface NeuralTtsRequest { text: string; lang: Lang; voice: string; /** v1.2 (E): expressive rendering; absent = v1.1 sound. */ prosody?: ProsodyParams }
 /** `pending` = model still downloading (no audio; play Web Speech meanwhile). `ms` = exact duration at rate 1. */
-export interface NeuralTtsResult { audioB64?: string; mime?: string; ms?: number; pending?: boolean; progress?: number; rtf?: number; threads?: number }
+export interface NeuralTtsResult { audioB64?: string; mime?: string; ms?: number; pending?: boolean; progress?: number; rtf?: number; threads?: number; /** v1.2 (E): post-processing time (ms). */ postMs?: number }
 /** Download state of one neural model. `progress` 0..1. */
 export interface NeuralModelState { model: string; ready: boolean; progress?: number; error?: string }
 

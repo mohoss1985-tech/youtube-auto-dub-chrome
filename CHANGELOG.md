@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.0 · 2026-11-23 · Emotion in the voice
+
+- **Expression:** the dub now has ups and downs. Each line gets an emotion from the subtitles (!, ?, words in CAPITALS, "wow", "let's go", money, NBA calls) and from how excited the scene sounds; Chrome's free built-in AI can tag emotions too.
+- **Livelier neural voice:** wider intonation (pitch range on excited lines 10 → 19 semitones), higher pitch when excited, questions rise at the end, key words stressed, louder when someone shouts. Web Speech voices also vary pitch and volume.
+- **Expression slider** in the popup (Flat ↔ Lively, default 70 %); ▶ Test plays a lively line.
+- Research on free expressive voices and fine-tuning: `research/v12-expressive-tts.md`.
+- 340 unit tests.
+
 ## v1.1.1 · 2026-11-23
 
 - French now uses the free neural voice **Siwis** by default (no need to open Engine). The male neural voice Tom is used when a man speaks. Until the voice is downloaded the first time, the Mac voice speaks.

@@ -12,6 +12,11 @@
   <img src="screenshots/popup-dark.png" width="260" alt="Mode sombre">
 </p>
 
+## Nouveautés de la v1.2 · De l'émotion dans la voix
+
+- **Des hauts et des bas :** chaque phrase reçoit une émotion (enthousiaste, question, cri, calme…) d'après les sous-titres et l'ambiance de la scène, et la voix française la suit : intonation plus large, plus aiguë quand c'est excitant, questions qui montent, mots importants appuyés.
+- **Curseur Expression** (Flat ↔ Lively) dans la fenêtre pour choisir à quel point le doublage est vivant.
+
 ## Nouveautés de la v1.1 · Meilleur français, voix plus fluide
 
 - **Voix neuronales gratuites :** des voix françaises naturelles (une femme et un homme) qui tournent sur votre ordinateur. Le français les utilise par défaut (Siwis, voix de femme ; Tom quand un homme parle). Téléchargées une fois (~60 Mo chacune), puis hors ligne.
@@ -43,6 +48,7 @@ Fonctionne avec Chrome 138 ou plus récent sur Mac, Windows et Linux. Brave et E
 | **Voice** + ▶ Test | Choix de la voix ; chaque voix est marquée Male (homme) ou Female (femme) |
 | **Match speaker's voice** | Un homme parle → voix d'homme, une femme → voix de femme |
 | **Voice speed** | De 0,75× (plus lent, idéal pour les petits) à 1,3× |
+| **Expression** | Flat ↔ Lively : la quantité d'émotion dans la voix (70 % par défaut) |
 | **Show translated subtitles** | Affiche la phrase traduite sur la vidéo |
 | **Engine** | Voix gratuites (par défaut), ou OpenAI / ElevenLabs avec votre propre clé |
 
@@ -98,7 +104,7 @@ TypeScript, Manifest V3, esbuild, Vitest, Playwright. Aucune dépendance à l'ex
 | Commande | Rôle |
 |---|---|
 | `npm install && npm run build` | construit l'extension dans `dist/` |
-| `npm test` | 289 tests unitaires |
+| `npm test` | 340 tests unitaires |
 | `npm run typecheck` | TypeScript |
 | `npx playwright test` | captures de la fenêtre + test de fumée |
 
