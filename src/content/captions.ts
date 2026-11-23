@@ -102,9 +102,11 @@ export function cleanCueText(raw: string): CleanText {
     t = t.replace(/^[-–—]\s+/, '');
   }
   // [Anything] is never spoken; a gender word inside it is a hint.
-  t = t.replace(/\[([^\]]{0,60})\]/g, (_all, inner: string) => {
+  // "[Jimmy]: …" / "[MAN 2]:" = a speaker label → new speaker (v1.1).
+  t = t.replace(/\[([^\]]{0,60})\](\s*:)?/g, (_all, inner: string, colon?: string) => {
     const g = genderFromLabel(inner);
     if (g) { gender = g; newSpeaker = true; }
+    if (colon && inner.trim()) newSpeaker = true;
     return ' ';
   });
   // (label) removed when it is a gender label, a sound tag, or the whole cue.
@@ -125,7 +127,10 @@ export function cleanCueText(raw: string): CleanText {
     newSpeaker = true;
     t = t.slice(pre[0].length);
   }
-  t = t.replace(/[♪♫♬]/g, ' ').replace(/\s+/g, ' ').trim();
+  // Sung lyrics (♪ … ♪, or a cue opening/closing a song) are never dubbed (v1.1).
+  t = t.replace(/[♪♫♬][^♪♫♬]*[♪♫♬]/g, ' ');
+  if (/[♪♫♬]/.test(t)) t = '';
+  t = t.replace(/\s+/g, ' ').trim();
   return gender ? { text: t, gender, newSpeaker } : { text: t, newSpeaker };
 }
 
@@ -289,6 +294,7 @@ export function mergeSentences(cues: Cue[], lang: string, opts?: { asr?: boolean
     ids.add(id);
     const line: Line = { id, start: round3(c.start), end: round3(Math.max(c.end, c.start)), text };
     if (c.gender) line.gender = c.gender;
+    if (c.newSpeaker) line.newSpeaker = true;
     lines.push(line);
   };
 
@@ -303,7 +309,7 @@ export function mergeSentences(cues: Cue[], lang: string, opts?: { asr?: boolean
         p.gender !== c.gender)
     ) flush();
     const open = cur as Piece | null;
-    if (!open) cur = { start: p.start, end: p.end, text: p.text, ...(p.gender ? { gender: p.gender } : {}) };
+    if (!open) cur = { start: p.start, end: p.end, text: p.text, ...(p.gender ? { gender: p.gender } : {}), ...(p.newSpeaker ? { newSpeaker: true } : {}) };
     else {
       open.text += sep + p.text;
       open.end = Math.max(open.end, p.end);

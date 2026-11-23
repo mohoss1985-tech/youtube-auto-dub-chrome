@@ -1,6 +1,7 @@
 // Voice listing, ranking and gender match (§4). Owner: B.
 import type { EngineId, Gender, Lang, VoiceInfo } from '../../shared/types';
 import { loadSettings } from '../../shared/settings';
+import { NEURAL_READY_KEY, neuralVoicesFor } from './neural-catalog';
 
 export type { VoiceInfo };
 
@@ -71,18 +72,37 @@ const isNovelty = (name: string): boolean => NOVELTY.has(fold(name).replace(/\s*
 
 /** Quality score for a Web Speech voice (higher = better). Exported for tests. */
 export function rankVoice(v: Pick<SpeechSynthesisVoice, 'name' | 'lang' | 'default'>, lang: Lang): number {
-  const n = fold(v.name);
-  let q = 10;
-  if (/\b(natural|neural)\b/.test(n)) q += 40;
-  if (/\bpremium\b/.test(n)) q += 35;
-  if (/\benhanced\b/.test(n)) q += 30;
-  if (/^google\b/.test(n)) q += 25;
-  if (/\bsiri\b/.test(n)) q += 20;
-  if (ELOQUENCE.has(tokens(v.name)[0] ?? '')) q -= 8;
-  if (normTag(v.lang) === PRIMARY_REGION[lang]) q += 5;
-  if (v.default) q += 1;
-  return q;
+  return 10 + voiceTier(v.name) + (normTag(v.lang) === PRIMARY_REGION[lang] ? 5 : 0) + (v.default ? 1 : 0);
 }
+
+/**
+ * Quality tier from the name (v1.1): Premium 50 > Natural/Neural 45 > Enhanced 40 > Google 30 > Siri 25 > compact 0 > Eloquence −8.
+ * Gaps (≥ 5) are wider than the region bonus (+5, e.g. fr-FR over fr-CA), so the region only breaks ties inside a tier.
+ */
+export function voiceTier(name: string): number {
+  const n = fold(name);
+  if (/\bpremium\b/.test(n)) return 50;
+  if (/\b(natural|neural)\b/.test(n)) return 45;
+  if (/\benhanced\b/.test(n)) return 40;
+  if (/^google\b/.test(n)) return 30;
+  if (/\bsiri\b/.test(n)) return 25;
+  if (ELOQUENCE.has(tokens(name)[0] ?? '')) return -8;
+  return 0;
+}
+
+/** True when a Premium/Enhanced/Natural (or Siri) voice is installed: else the popup suggests downloading one. */
+export function hasHighQualityVoice(voices: readonly Pick<VoiceInfo, 'name'>[]): boolean {
+  return voices.some((v) => voiceTier(v.name) >= 25 && !/^google\b/.test(fold(v.name)));
+}
+
+/** macOS voices worth downloading per language (popup hint; names as shown in "Manage voices"). */
+export const MAC_HQ_VOICES: Readonly<Record<Lang, { female: string; male: string }>> = {
+  fr: { female: 'Audrey (Premium)', male: 'Thomas (Enhanced)' },
+  en: { female: 'Ava (Premium)', male: 'Evan (Enhanced)' },
+  es: { female: 'Mónica (Enhanced)', male: 'Jorge (Enhanced)' },
+  ar: { female: 'Laila', male: 'Majed (Enhanced)' },
+  tr: { female: 'Yelda (Enhanced)', male: 'Cem' },
+};
 
 // ---------------------------------------------------------------- Web Speech voices
 
@@ -182,6 +202,33 @@ function apiVoices(engine: 'openai' | 'elevenlabs', lang: Lang): VoiceInfo[] {
   return src.map((v, i) => ({ id: v.id, name: v.name, lang, engine, gender: v.gender, quality: 100 - i }));
 }
 
+// ---------------------------------------------------------------- neural voices (v1.1, Piper on this computer)
+
+/** Models already downloaded (written by the service worker in chrome.storage.local). */
+export async function neuralReadyModels(): Promise<string[]> {
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return [];
+    const got = await chrome.storage.local.get(NEURAL_READY_KEY);
+    const v = got[NEURAL_READY_KEY];
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Added to a neural voice's quality once its model is downloaded (ranks first; popup shows "not downloaded" below it). */
+export const NEURAL_READY_BONUS = 1000;
+
+/** Neural voices for `lang` as VoiceInfo; downloaded ones rank first. Pure; exported for tests. */
+export function neuralVoiceInfos(lang: Lang, ready: readonly string[] = []): VoiceInfo[] {
+  return neuralVoicesFor(lang)
+    .map((v): VoiceInfo => ({
+      id: v.id, name: v.name, lang: v.bcp47, engine: 'neural', gender: v.gender,
+      quality: v.rank + (ready.includes(v.model) ? NEURAL_READY_BONUS : 0),
+    }))
+    .sort((a, b) => b.quality - a.quality || a.name.localeCompare(b.name));
+}
+
 /** Default API voice (sync). */
 export function defaultApiVoice(engine: 'openai' | 'elevenlabs'): string {
   return engine === 'openai' ? OPENAI_VOICES[0].id : ELEVEN_VOICES[0].id;
@@ -191,6 +238,7 @@ export function defaultApiVoice(engine: 'openai' | 'elevenlabs'): string {
 
 /** Voices for `lang`, quality-ranked (Natural/Neural/Google/Premium/Enhanced first). Default engine: webspeech. [] if none. */
 export async function listVoices(lang: Lang, engine: EngineId = 'webspeech'): Promise<VoiceInfo[]> {
+  if (engine === 'neural') return neuralVoiceInfos(lang, await neuralReadyModels());
   if (engine !== 'webspeech') return apiVoices(engine, lang);
   return rankWebVoices(await loadWebVoices(), lang);
 }

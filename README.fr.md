@@ -12,6 +12,13 @@
   <img src="screenshots/popup-dark.png" width="260" alt="Mode sombre">
 </p>
 
+## Nouveautés de la v1.1 · Meilleur français, voix plus fluide
+
+- **Voix neuronales gratuites :** des voix françaises naturelles (une femme et un homme) qui tournent sur votre ordinateur. Choisissez **Neural voices** dans Engine. Téléchargées une fois (~60 Mo chacune), puis hors ligne.
+- **Audio français officiel d'abord :** beaucoup de vidéos MrBeast ont de vrais comédiens français sur YouTube. AutoDub bascule dessus automatiquement.
+- **Plus fluide :** vitesse régulière, plus de silence suivi d'un débit rapide ; la voix ne passe d'homme à femme que si la personne qui parle change vraiment.
+- **Français plus propre :** plus de « euh », de [Musique] ni de paroles de chansons lues ; nombres et mots de la NBA dits à la française. L'option **Smart French** utilise l'IA intégrée gratuite de Chrome pour raccourcir les phrases trop longues.
+
 ## Installation en 2 minutes (sans le Chrome Web Store)
 
 1. **[Téléchargez `autodub-chrome.zip`](https://github.com/mohoss1985-tech/youtube-auto-dub-chrome/releases/latest/download/autodub-chrome.zip)** et double-cliquez dessus pour le décompresser. Vous obtenez un dossier `autodub-chrome`.
@@ -77,6 +84,7 @@ Pas de compte, pas de serveur, pas de statistiques. Les réglages, les avis 👍
 - Pas encore pour les Shorts, le site YouTube Kids, les téléphones ni les applis TV.
 - **Homme ou femme reste une estimation.** Dessins animés, chansons et voix d'enfants (aiguës → voix de femme) peuvent la tromper.
 - Au démarrage, Chrome peut afficher « Désactiver les extensions en mode développeur ». Cliquez sur **Conserver** (ou ×) : c'est normal pour une extension installée de cette façon.
+- **Licences des voix neuronales :** les modèles de voix sont téléchargés depuis le projet Piper (rhasspy/piper-voices) par votre navigateur, ils ne sont pas inclus ici. Certains sont réservés à un usage non commercial (la voix masculine française Tom est sous AGPL-3.0 ; les voix anglaises et turques sous CC BY-NC-SA). Aucun souci pour un usage personnel.
 - Sans lien avec YouTube ni Google. « AutoDub » est le nom de travail du projet ; une autre extension Chrome, sans rapport, porte aussi ce nom.
 
 ## Mise à jour
@@ -90,7 +98,7 @@ TypeScript, Manifest V3, esbuild, Vitest, Playwright. Aucune dépendance à l'ex
 | Commande | Rôle |
 |---|---|
 | `npm install && npm run build` | construit l'extension dans `dist/` |
-| `npm test` | 193 tests unitaires |
+| `npm test` | 289 tests unitaires |
 | `npm run typecheck` | TypeScript |
 | `npx playwright test` | captures de la fenêtre + test de fumée |
 

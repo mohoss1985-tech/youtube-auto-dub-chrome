@@ -154,3 +154,23 @@ export async function getAudioTracks(videoId?: string): Promise<AudioTrackInfo[]
     return [];
   }
 }
+
+/** Result of an official audio-track switch (v1.1, F). */
+export interface OfficialAudioResult { switched: boolean; already?: boolean; name?: string; autoDubbed?: boolean; reason?: string }
+
+/** Switch the player to YouTube's own `lang` audio track (official / auto-dub) via the MAIN world. null when no player or the bridge fails. */
+export async function switchToOfficialAudio(videoId: string, lang: string): Promise<OfficialAudioResult | null> {
+  if (typeof document === 'undefined' || !getPlayer()) return null;
+  try {
+    const r = await bridgeRequest<OfficialAudioResult | null>('audioTrackSwitch', { videoId, lang }, { timeoutMs: 3000 });
+    return r && typeof r.switched === 'boolean' ? r : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Restore the audio track that played before switchToOfficialAudio (same video only). Best effort. */
+export function restoreOfficialAudio(videoId: string): void {
+  if (typeof document === 'undefined' || !getPlayer()) return;
+  void bridgeRequest('audioTrackRestore', { videoId }, { timeoutMs: 3000 }).catch(() => {});
+}

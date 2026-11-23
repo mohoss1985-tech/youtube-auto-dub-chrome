@@ -13,7 +13,7 @@ export const LANG_INFO: Readonly<Record<Lang, LangInfo>> = {
   tr: { code: 'tr', name: 'Turkish', native: 'Türkçe', bcp47: 'tr-TR', rtl: false },
 };
 
-export const ENGINES: readonly EngineId[] = ['webspeech', 'openai', 'elevenlabs'] as const;
+export const ENGINES: readonly EngineId[] = ['webspeech', 'openai', 'elevenlabs', 'neural'] as const;
 
 /** chrome.storage.local keys (§7). */
 export const STORAGE_KEYS = {
@@ -32,6 +32,9 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   duckLevel: 0.1,
   holdDuck: true,
   continuous: true,
+  preferNeural: true,
+  smartFrench: true,
+  preferOfficialAudio: true,
   dubVolume: 1,
   voiceSpeed: 1,
   showBadge: true,
@@ -65,6 +68,9 @@ export function normalizeSettings(raw: unknown): Settings {
     duckLevel: clamp(r.duckLevel, 0, 1, d.duckLevel),
     holdDuck: typeof r.holdDuck === 'boolean' ? r.holdDuck : d.holdDuck,
     continuous: typeof r.continuous === 'boolean' ? r.continuous : d.continuous,
+    preferNeural: bool(r.preferNeural, d.preferNeural),
+    smartFrench: bool(r.smartFrench, d.smartFrench),
+    preferOfficialAudio: bool(r.preferOfficialAudio, d.preferOfficialAudio),
     dubVolume: clamp(r.dubVolume, 0, 1, d.dubVolume),
     voiceSpeed: clamp(r.voiceSpeed, VOICE_SPEED_MIN, VOICE_SPEED_MAX, d.voiceSpeed),
     showBadge: bool(r.showBadge, d.showBadge),

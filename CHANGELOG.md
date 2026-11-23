@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.1.0 · 2026-11-23 · Better French, smoother voice
+
+- **Neural voices (free, on your computer):** natural Piper voices, French female (Siwis) and male (Tom), plus Spanish, English, Arabic and Turkish. Downloaded once (~60 MB per voice), then offline. Recommended for French.
+- **Best Mac voices first:** Premium > Enhanced > Google > compact, fr-FR before fr-CA, with steps to download Audrey (Premium) / Thomas (Enhanced).
+- **Smooth pacing:** whole passages are planned with one steady speed; no more silence followed by fast talking. Each voice's real speed is learned. Synthetic fast-talker test: 100 % of lines spoken (v1.0: 68 %), longest silence 0.4 s.
+- **Smooth speaker switching:** the voice changes only on a new-speaker mark in the subtitles or 2 clear lines in a row, at most every 6 s. A shouting man stays a man.
+- **Cleaner French:** fillers, stutters, [Music] tags, lyrics and ALL CAPS removed before translating; French made easy to say (10 000 dollars, tir à trois points, N B A, Mister Beast).
+- **Smart French (optional, free):** Chrome's built-in on-device AI shortens French lines that are too long for their slot.
+- **Official audio first:** when YouTube has an official French track (many MrBeast videos), AutoDub switches to it instead of the AI dub.
+- 289 unit tests.
+
 ## v1.0.0 · 2026-11-23 · First release
 
 - One-click dubbing of YouTube videos into French, Arabic, English, Spanish or Turkish, from the video's subtitles.

@@ -1,18 +1,21 @@
 // Popup controller (DESIGN_SPEC §6). Owner: D.
 // Talks to the active tab via GET_STATUS / DUB_TOGGLE / LIST_VOICES / TEST_VOICE and listens to STATUS.
 // `popup.html?mock=<state>` renders a fixed mock state (screenshots, tests): see MOCK_STATES.
-import type { DubErrorCode, DubStatus, EngineId, ErrorCode, Gender, Lang, Settings, VoiceInfo } from '../shared/types';
+import type { DubErrorCode, DubStatus, EngineId, ErrorCode, Gender, Lang, NeuralModelState, Settings, VoiceInfo } from '../shared/types';
 import {
   DEFAULT_SETTINGS, LANGS, LANG_INFO, VOICE_SPEED_MAX, VOICE_SPEED_MIN,
   getSecrets, loadSettings, normalizeSettings, saveSecrets, saveSettings,
 } from '../shared/settings';
 import { sendToSW, sendToTab, type MsgResponse } from '../shared/messages';
 // B's pure voice helpers (Web Speech works in the popup too: it is an extension page).
-import { NO_VOICE_HELP, gendersOf, listVoices as listVoicesB } from '../content/voice/voices';
+import { MAC_HQ_VOICES, NEURAL_READY_BONUS, NO_VOICE_HELP, gendersOf, hasHighQualityVoice, listVoices as listVoicesB } from '../content/voice/voices';
+import { neuralVoicesFor, recommendedModels } from '../content/voice/neural-catalog';
 
 // ---------------------------------------------------------------- types
 
 export type ApiEngine = 'openai' | 'elevenlabs';
+/** Engines that need a key + host permission. */
+export const isApiEngine = (e: EngineId): e is ApiEngine => e === 'openai' || e === 'elevenlabs';
 /** Where the popup was opened: on a tab with our content script, on YouTube without it (needs reload), elsewhere. */
 export type TabContext = 'loading' | 'youtube' | 'reload' | 'not-youtube';
 /** Last 4 chars of each saved key (never the key itself). */
@@ -33,6 +36,8 @@ export interface PopupBackend {
   removeHost(engine: ApiEngine): Promise<void>;
   onStatus(cb: (s: DubStatus) => void): void;
   reloadTab(): void;
+  /** v1.1 neural voices: download state of `models`; `download` starts downloads first. */
+  neuralStatus(models: string[], download?: string[]): Promise<NeuralModelState[]>;
   theme?: 'light' | 'dark';
   /** Mock only: open the Engine section at start. */
   engineOpen?: boolean;
@@ -48,6 +53,7 @@ const HOSTS: Record<ApiEngine, string> = {
 };
 
 const ENGINE_INFO: Record<EngineId, { name: string; short: string; sub: string; tag: string }> = {
+  neural: { name: 'Neural voices', short: 'Neural (free)', sub: 'Free, on this computer · ~60 MB per voice', tag: 'Free' },
   webspeech: { name: 'Browser voices', short: 'Browser (free)', sub: 'Installed on this Mac · offline', tag: 'Free' },
   openai: { name: 'OpenAI', short: 'OpenAI', sub: 'Natural voices · your key', tag: '≈ $0.90 / h' },
   elevenlabs: { name: 'ElevenLabs', short: 'ElevenLabs', sub: 'Most natural · your key', tag: '≈ 25k credits / h' },
@@ -128,7 +134,8 @@ export function voiceLabel(v: VoiceInfo, best: boolean): string {
   const parts = [name];
   const g = genderLabel(v.gender);
   if (g) parts.push(g);
-  if (best && !/ HD$/.test(name)) parts.push('Best');
+  if (v.engine === 'neural' && v.quality < NEURAL_READY_BONUS) parts.push('not downloaded');
+  else if (best && !/ HD$/.test(name)) parts.push('Best');
   return parts.join(' · ');
 }
 
@@ -206,13 +213,16 @@ export function pickBanner(status: DubStatus, context: TabContext, s: Settings, 
       progress: m ? Math.min(100, Number(m[1])) : 'indeterminate',
     };
   }
+  if (status.usingOfficialAudio) {
+    return { tone: 'info', icon: 'info', title: status.message ?? `Using YouTube's official ${LANG_INFO[s.targetLang].name} audio`, text: 'Real voice actors, no AI dub needed. Turn off "Use official audio" below to hear the AI dub.' };
+  }
   if (status.officialTrackLang && status.officialTrackLang === s.targetLang) {
     return {
       tone: 'info', icon: 'info', title: `YouTube has an official ${LANG_INFO[s.targetLang].name} track`,
       text: 'For the original voice actors: player ⚙ Settings → Audio track. Or keep the AI dub.',
     };
   }
-  if (s.engine !== 'webspeech' && !keys[s.engine]) {
+  if (isApiEngine(s.engine) && !keys[s.engine]) {
     return { tone: 'warn', icon: 'key', title: `Add your ${ENGINE_INFO[s.engine].name} key`, text: 'Until then AutoDub uses the free browser voice.', actions: [{ id: 'open-engine', label: 'Add key', primary: true }] };
   }
   return null;
@@ -307,6 +317,10 @@ function realBackend(): PopupBackend {
       if (tabId != null) void chrome.tabs.reload(tabId);
       window.close();
     },
+    async neuralStatus(models, download) {
+      const res = await sendToSW({ type: 'NEURAL_STATUS', models, download }, 15000);
+      return res.ok ? res.models : models.map((model) => ({ model, ready: false, error: res.message ?? res.error }));
+    },
   };
   return backend;
 }
@@ -323,10 +337,13 @@ async function localTest(lang: Lang, engine: EngineId, voice: string): Promise<M
     speechSynthesis.speak(u);
     return { ok: true };
   }
-  const res = await sendToSW({ type: 'TTS', text, lang, engine, voice });
+  const res = engine === 'neural'
+    ? await sendToSW({ type: 'NEURAL_TTS', text, lang, voice }, 20000)
+    : await sendToSW({ type: 'TTS', text, lang, engine, voice });
   if (!res.ok) return res;
+  if (!res.audioB64) return { ok: false, error: 'NO_VOICE', message: 'Neural voice still downloading' };
   try {
-    await new Audio(`data:${res.mime};base64,${res.audioB64}`).play();
+    await new Audio(`data:${res.mime ?? 'audio/wav'};base64,${res.audioB64}`).play();
     return { ok: true };
   } catch (e) {
     return { ok: false, error: 'ENGINE_ERROR', message: e instanceof Error ? e.message : String(e) };
@@ -402,6 +419,10 @@ export function mockBackend(state: string): PopupBackend {
     async removeHost() {},
     onStatus(f) { cb = f; },
     reloadTab() {},
+    async neuralStatus(models) {
+      // engine-open mock: one voice downloading, one ready; others: nothing downloaded (keeps their engine as is).
+      return models.map((model, i) => (st === 'engine-open' ? { model, ready: i > 0, progress: i > 0 ? undefined : 0.42 } : { model, ready: false }));
+    },
   };
 }
 
@@ -417,6 +438,8 @@ interface ViewState {
   engineMsg: { text: string; tone: string } | null;
   testMsg: { text: string; tone: string } | null;
   testing: boolean;
+  /** v1.1 neural model states for the target language (null = not loaded). */
+  neural: NeuralModelState[] | null;
 }
 
 const SHELL = `
@@ -466,11 +489,20 @@ const SHELL = `
     <span class="row-label"><span>Show translated subtitles</span><span class="row-sub">On the video, under the dub</span></span>
     <label class="switch"><input type="checkbox" role="switch" data-el="subs" aria-label="Show translated subtitles" /><span class="track"><span class="thumb"></span></span></label>
   </div>
+  <div class="row">
+    <span class="row-label"><span>Use official audio when available</span><span class="row-sub">Real voice actors (e.g. MrBeast in French) instead of the AI dub</span></span>
+    <label class="switch"><input type="checkbox" role="switch" data-el="official" aria-label="Use official audio when available" /><span class="track"><span class="thumb"></span></span></label>
+  </div>
+  <div class="row">
+    <span class="row-label"><span>Smart French (on-device AI)</span><span class="row-sub">Shortens long lines so the voice keeps pace. Free, Chrome's built-in AI</span></span>
+    <label class="switch"><input type="checkbox" role="switch" data-el="smart" aria-label="Smart French" /><span class="track"><span class="thumb"></span></span></label>
+  </div>
 </section>
 <details class="engine" data-el="engine">
   <summary>${icon('sliders')}<span>Engine</span><span class="summary-val" data-el="engine-val"></span>${icon('chevron', 'icon chev')}</summary>
   <div class="engine-body">
     <div class="engines" role="radiogroup" aria-label="Voice engine" data-el="engines"></div>
+    <div data-el="neural"></div>
     <div data-el="key"></div>
   </div>
 </details>
@@ -496,6 +528,7 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
     engineMsg: null,
     testMsg: null,
     testing: false,
+    neural: null,
   };
   root.dataset.context = 'loading';
 
@@ -570,8 +603,8 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
     renderGenderNote();
   };
 
-  const pathHtml = () =>
-    `<div class="path">${MAC_PATH.map((p, i) => `${i ? icon('right') : ''}<span>${esc(p)}</span>`).join('')}</div>`;
+  const pathHtml = (lang?: string) =>
+    `<div class="path">${[...MAC_PATH, ...(lang ? [lang] : [])].map((p, i) => `${i ? icon('right') : ''}<span>${esc(p)}</span>`).join('')}</div>`;
 
   const renderGenderNote = () => {
     const note = $('gender-note');
@@ -580,13 +613,25 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
     const males = voices.filter((v) => v.gender === 'male').length;
     const females = voices.filter((v) => v.gender !== 'male').length;
     const missing = vs.settings.engine === 'webspeech' ? missingGender(voices) : null;
+    const hq = vs.settings.engine === 'webspeech' && !hasHighQualityVoice(voices) ? qualityHint() : '';
     const tags = `<div class="gender-tags">
       <span class="tag" ${!females ? 'data-missing="true"' : ''}><b>${females}</b>female</span>
       <span class="tag" ${!males ? 'data-missing="true"' : ''}><b>${males}</b>male</span></div>`;
-    if (!missing) { note.innerHTML = vs.settings.matchSpeakerGender ? tags : ''; return; }
+    if (!missing) { note.innerHTML = (vs.settings.matchSpeakerGender ? tags : '') + hq; return; }
     const lang = vs.settings.targetLang;
     note.innerHTML = `${tags}<div class="help" data-gender-notice><p><strong>Only ${missing === 'male' ? 'female' : 'male'} ${esc(LANG_INFO[lang].name)} voices are installed.</strong>
-      To add a ${missing} voice such as ${esc(SUGGEST[lang][missing])}:</p>${pathHtml()}</div>`;
+      To add a ${missing} voice such as ${esc(SUGGEST[lang][missing])}:</p>${pathHtml()}</div>${hq}`;
+  };
+
+  /** Only compact (robotic) browser voices: point to the free neural voices and to the Mac's Premium/Enhanced voices. */
+  const qualityHint = () => {
+    const lang = vs.settings.targetLang;
+    const L = LANG_INFO[lang].name;
+    const hq = MAC_HQ_VOICES[lang];
+    return `<div class="help" data-quality-hint><p><strong>These ${esc(L)} voices sound robotic.</strong>
+      Best free option: <button type="button" class="link" data-action="use-neural">Neural voices</button> (on this computer).
+      Or download a natural Mac voice such as <b>${esc(hq.female)}</b> or <b>${esc(hq.male)}</b>:</p>
+      ${pathHtml(LANG_INFO[lang].native)}<p class="row-sub">Then quit and reopen Chrome.</p></div>`;
   };
 
   // ------------ sliders + toggles
@@ -606,19 +651,25 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
     $('speed-val').textContent = `${Number(speed.value).toFixed(2)}×`;
     $<HTMLInputElement>('subs').checked = s.showSubtitles;
     $<HTMLInputElement>('gender').checked = s.matchSpeakerGender;
+    $<HTMLInputElement>('official').checked = s.preferOfficialAudio;
+    $<HTMLInputElement>('smart').checked = s.smartFrench;
   };
 
   // ------------ engine
   const renderEngine = () => {
     const s = vs.settings;
     $('engine-val').textContent = ENGINE_INFO[s.engine].short;
-    $('engines').innerHTML = (['webspeech', 'openai', 'elevenlabs'] as EngineId[]).map((e) => {
+    const hasNeural = neuralVoicesFor(s.targetLang).length > 0;
+    $('engines').innerHTML = ((hasNeural ? ['neural'] : []).concat(['webspeech', 'openai', 'elevenlabs']) as EngineId[]).map((e) => {
       const info = ENGINE_INFO[e];
-      return `<label class="eng"><input type="radio" name="engine" value="${e}" ${e === s.engine ? 'checked' : ''} />
-        <span><span class="eng-name">${info.name}</span><span class="eng-sub">${info.sub}</span></span><span class="eng-tag">${info.tag}</span></label>`;
+      const tag = e === 'neural' && s.targetLang === 'fr' ? 'Best free' : info.tag;
+      const rec = e === 'neural' ? ' data-recommended="true"' : '';
+      return `<label class="eng"${rec}><input type="radio" name="engine" value="${e}" ${e === s.engine ? 'checked' : ''} />
+        <span><span class="eng-name">${info.name}${e === 'neural' && s.targetLang === 'fr' ? ' <span class="eng-rec">Recommended for French</span>' : ''}</span><span class="eng-sub">${info.sub}</span></span><span class="eng-tag">${tag}</span></label>`;
     }).join('');
+    renderNeural();
     const keyBox = $('key');
-    if (s.engine === 'webspeech') {
+    if (!isApiEngine(s.engine)) {
       keyBox.innerHTML = vs.engineMsg ? `<p class="inline-msg" data-tone="${vs.engineMsg.tone}">${esc(vs.engineMsg.text)}</p>` : '';
       return;
     }
@@ -637,6 +688,52 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
         <li>${icon('key')}<span>Use a dedicated key you can revoke. It is stored only on this device and sent only to ${e === 'openai' ? 'api.openai.com' : 'api.elevenlabs.io'}.</span></li>
         <li>${icon('info')}<span>${COST_HINT[e]}</span></li>
       </ul></div>`;
+  };
+
+  // ------------ neural voices (v1.1)
+  const neuralModels = () => recommendedModels(vs.settings.targetLang);
+  const renderNeural = () => {
+    const box = $('neural');
+    const lang = vs.settings.targetLang;
+    const voices = neuralVoicesFor(lang).filter((v) => v.recommended);
+    if (vs.settings.engine !== 'neural' || !voices.length) { box.innerHTML = ''; return; }
+    const states = vs.neural ?? [];
+    const st = (m: string) => states.find((x) => x.model === m);
+    const allReady = voices.every((v) => st(v.model)?.ready);
+    const downloading = states.filter((x) => !x.ready && x.progress !== undefined);
+    const err = states.find((x) => x.error)?.error;
+    const mb = [...new Map(voices.map((v) => [v.model, v.sizeMB])).values()].reduce((a, b) => a + b, 0);
+    const list = voices.map((v) => {
+      const s = st(v.model);
+      const state = s?.ready ? `${icon('check')}<span>Ready</span>` : s?.progress !== undefined ? `<span>${Math.round(s.progress * 100)}%</span>` : '<span>Not downloaded</span>';
+      return `<li data-neural-voice="${esc(v.id)}" data-ready="${!!s?.ready}"><span class="nv-name">${esc(v.name)}</span><span class="nv-g">${v.gender === 'male' ? 'Male' : 'Female'}</span><span class="nv-state">${state}</span></li>`;
+    }).join('');
+    const pct = downloading.length ? Math.round((downloading.reduce((a, x) => a + (x.progress ?? 0), 0) / voices.length) * 100) : 0;
+    const progress = downloading.length
+      ? `<div class="progress" role="progressbar" aria-label="Downloading neural voices" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>`
+      : '';
+    const action = allReady || downloading.length || vs.neural === null ? ''
+      : `<button type="button" class="btn btn-primary" data-action="neural-download">${icon('download')}<span>Download ${esc(LANG_INFO[lang].name)} voices (${mb} MB)</span></button>`;
+    box.innerHTML = `<div class="neural" data-neural>
+      <p class="row-sub">${allReady ? 'Downloaded. Runs on this computer: free, private, no key.' : `One-time download from Hugging Face (${mb} MB). Until it finishes, the browser voice speaks.`}</p>
+      <ul class="nv-list">${list}</ul>${progress}${action}
+      ${err ? `<p class="inline-msg" data-tone="error">Download failed: ${esc(err)}</p>` : ''}</div>`;
+  };
+
+  let neuralTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Refresh model states; polls while downloading; switches to 'neural' when ready if preferNeural (v1.1). */
+  const refreshNeural = async (download?: string[]) => {
+    clearTimeout(neuralTimer);
+    const models = neuralModels();
+    if (!models.length) { vs.neural = []; renderNeural(); return; }
+    try { vs.neural = await be.neuralStatus(models, download); } catch { vs.neural = []; }
+    const ready = vs.neural.length > 0 && vs.neural.every((m) => m.ready);
+    if (ready && vs.settings.preferNeural && vs.settings.engine === 'webspeech' && vs.settings.targetLang === 'fr') {
+      await save({ engine: 'neural' });
+      renderEngine(); void loadVoices();
+    }
+    renderNeural();
+    if (vs.neural.some((m) => !m.ready && m.progress !== undefined && !m.error)) neuralTimer = setTimeout(() => void refreshNeural(), 700);
   };
 
   const renderAll = () => {
@@ -677,11 +774,15 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
       renderLangs(); renderHeader(); renderBanner();
       void save({ targetLang: lang });
       void loadVoices();
+      renderEngine();
+      void refreshNeural();
       return;
     }
     const action = t.closest<HTMLElement>('[data-action]')?.dataset.action;
     if (action === 'open-engine') { ($('engine') as HTMLDetailsElement).open = true; $('engine').scrollIntoView({ block: 'nearest' }); return; }
     if (action === 'retry') { void doToggle(true); return; }
+    if (action === 'neural-download') { void refreshNeural(neuralModels()); return; }
+    if (action === 'use-neural') { onEngineChange('neural'); ($('engine') as HTMLDetailsElement).open = true; return; }
     if (action === 'reload') { be.reloadTab(); return; }
     if (t.closest('[data-el="test"]')) { void doTest(); return; }
     if (t.closest('[data-el="key-save"]')) { doSaveKey(); return; }
@@ -711,6 +812,8 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
     const el = t.dataset.el;
     if (el === 'power') { void doToggle(t.checked); return; }
     if (el === 'subs') { void save({ showSubtitles: t.checked }); return; }
+    if (el === 'official') { void save({ preferOfficialAudio: t.checked }); return; }
+    if (el === 'smart') { void save({ smartFrench: t.checked }); return; }
     if (el === 'gender') { void save({ matchSpeakerGender: t.checked }).then(renderGenderNote); return; }
     if (el === 'voice-select') {
       vs.testMsg = null;
@@ -746,7 +849,7 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
     const prev = vs.settings.engine;
     vs.engineMsg = null;
     // Permission request must start synchronously inside the user gesture.
-    const granted = engine === 'webspeech' ? Promise.resolve(true) : be.requestHost(engine);
+    const granted = isApiEngine(engine) ? be.requestHost(engine) : Promise.resolve(true);
     void granted.then(async (ok) => {
       if (!ok) {
         vs.engineMsg = { tone: 'error', text: `Permission to reach ${engine === 'openai' ? 'api.openai.com' : 'api.elevenlabs.io'} was not given. Still using ${ENGINE_INFO[prev].short}.` };
@@ -757,15 +860,17 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
       for (const e of ['openai', 'elevenlabs'] as ApiEngine[]) {
         if (e !== engine && e === prev && !(e === 'openai' && vs.keys.openai)) await be.removeHost(e);
       }
-      await save({ engine });
+      // v1.1: an explicit choice of Web Speech stops the automatic switch to neural voices.
+      await save(engine === 'webspeech' ? { engine, preferNeural: false } : engine === 'neural' ? { engine, preferNeural: true } : { engine });
       renderEngine(); renderBanner();
       void loadVoices();
+      if (engine === 'neural') void refreshNeural(neuralModels());
     });
   };
 
   const doSaveKey = () => {
     const e = vs.settings.engine;
-    if (e === 'webspeech') return;
+    if (!isApiEngine(e)) return;
     const input = root.querySelector<HTMLInputElement>('[data-el="key-input"]');
     const key = input?.value.trim() ?? '';
     if (!key) { vs.engineMsg = { tone: 'error', text: 'Paste your key first.' }; renderEngine(); return; }
@@ -783,7 +888,7 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
 
   const doRemoveKey = async () => {
     const e = vs.settings.engine;
-    if (e === 'webspeech') return;
+    if (!isApiEngine(e)) return;
     await be.saveKey(e, null);
     vs.keys = await be.keyHints();
     vs.engineMsg = { tone: 'ok', text: 'Key removed from this device.' };
@@ -800,6 +905,7 @@ export async function initPopup(root: HTMLElement, opts: InitOptions = {}): Prom
   if (be.engineOpen) ($('engine') as HTMLDetailsElement).open = true;
   renderAll();
   void loadVoices();
+  void refreshNeural();
   void be.connect().then(({ context, status }) => {
     vs.context = context;
     vs.status = status;

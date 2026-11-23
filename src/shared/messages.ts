@@ -1,5 +1,5 @@
 // AutoDub runtime + window-bridge messages (DESIGN_SPEC §8). Owner: A.
-import type { CacheStore, DubStatus, EngineId, ErrorCode, Lang, TtsRequest, TtsResult, VoiceInfo } from './types';
+import type { CacheStore, DubStatus, EngineId, ErrorCode, Lang, NeuralModelState, NeuralTtsRequest, NeuralTtsResult, TtsRequest, TtsResult, VoiceInfo } from './types';
 import { DubError } from './types';
 
 // ---------------- Runtime messages (chrome.runtime / chrome.tabs) ----------------
@@ -13,7 +13,11 @@ export type Msg =
   | { type: 'GET_STATUS' }
   | { type: 'STATUS'; status: DubStatus }
   | { type: 'LIST_VOICES'; lang: Lang }
-  | { type: 'TEST_VOICE'; lang: Lang; engine: EngineId; voice: string };
+  | { type: 'TEST_VOICE'; lang: Lang; engine: EngineId; voice: string }
+  /** v1.1 neural voices: synthesize on this computer (offscreen Piper). */
+  | ({ type: 'NEURAL_TTS' } & NeuralTtsRequest)
+  /** v1.1: model download state; `download` starts downloads, `remove` deletes models. */
+  | { type: 'NEURAL_STATUS'; models: string[]; download?: string[]; remove?: string[] };
 
 export type MsgType = Msg['type'];
 export type MsgOf<T extends MsgType> = Extract<Msg, { type: T }>;
@@ -29,6 +33,8 @@ export interface MsgResultMap {
   STATUS: {};
   LIST_VOICES: { voices: VoiceInfo[] };
   TEST_VOICE: {};
+  NEURAL_TTS: NeuralTtsResult;
+  NEURAL_STATUS: { models: NeuralModelState[] };
 }
 
 export interface MsgError { ok: false; error: ErrorCode; message?: string }
@@ -36,7 +42,7 @@ export type MsgResponse<T = {}> = ({ ok: true } & T) | MsgError;
 export type ResponseOf<T extends MsgType> = MsgResponse<MsgResultMap[T]>;
 
 /** Messages handled by the service worker. */
-export const SW_MSG_TYPES = ['TRANSLATE', 'TTS', 'CACHE_GET', 'CACHE_PUT'] as const;
+export const SW_MSG_TYPES = ['TRANSLATE', 'TTS', 'CACHE_GET', 'CACHE_PUT', 'NEURAL_TTS', 'NEURAL_STATUS'] as const;
 export type SWMsg = MsgOf<(typeof SW_MSG_TYPES)[number]>;
 
 export function isMsg(x: unknown): x is Msg {
@@ -97,7 +103,9 @@ export function broadcastStatus(status: DubStatus): void {
 export const BRIDGE_SOURCE = 'autodub' as const;
 
 /** Bridge ops served by main-hook.ts. 'translate' = Translator API fallback in MAIN world (§3.5). */
-export type BridgeOp = 'playerResponse' | 'json3' | 'audioTracks' | 'translate';
+export type BridgeOp = 'playerResponse' | 'json3' | 'audioTracks' | 'translate'
+  /** v1.1 (F): Gemini Nano rewrite in MAIN world + download warm-up; official audio-track switch/restore. */
+  | 'nano' | 'nanoWarmup' | 'translatorWarmup' | 'audioTrackSwitch' | 'audioTrackRestore';
 
 export type BridgeMsg =
   | { source: typeof BRIDGE_SOURCE; type: 'AD_TIMEDTEXT_URL'; url: string }

@@ -2,6 +2,7 @@
 import type { EngineId, Lang, Line } from '../../shared/types';
 import { WebSpeechEngine } from './webspeech';
 import { AudioEngine, type AudioEngineOptions } from './audio';
+import { NeuralEngine } from './neural';
 
 /** A line ready to play. API engines carry a Blob URL and decoded duration; WebSpeech carries text only. */
 export interface Prepared {
@@ -40,7 +41,12 @@ export interface TtsEngine {
   dispose?(): void;
 }
 
-/** Factory: 'webspeech' → WebSpeechEngine, 'openai' | 'elevenlabs' → AudioEngine (opts: onFallback, speed, send). */
+/**
+ * Factory: 'webspeech' → WebSpeechEngine, 'openai' | 'elevenlabs' → AudioEngine (opts: onFallback, speed, send),
+ * 'neural' → NeuralEngine (free Piper voices on this computer; opts.onFallback after repeated failures).
+ */
 export function createEngine(id: EngineId, opts?: AudioEngineOptions): TtsEngine {
-  return id === 'webspeech' ? new WebSpeechEngine() : new AudioEngine(id, opts);
+  if (id === 'webspeech') return new WebSpeechEngine();
+  if (id === 'neural') return new NeuralEngine({ onFallback: opts?.onFallback });
+  return new AudioEngine(id, opts);
 }

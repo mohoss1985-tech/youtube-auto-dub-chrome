@@ -1,14 +1,14 @@
 // AutoDub shared types (DESIGN_SPEC §8). Owner: A. Others import, never edit.
 
 export type Lang = 'fr' | 'ar' | 'en' | 'es' | 'tr';
-export type EngineId = 'webspeech' | 'openai' | 'elevenlabs';
+export type EngineId = 'webspeech' | 'openai' | 'elevenlabs' | 'neural';
 export type Gender = 'male' | 'female' | 'unknown';
 
 export interface CaptionTrack { baseUrl: string; languageCode: string; kind?: string; vssId: string; name?: string }
 /** Times in seconds. `gender` = caption speaker-label hint ([Man], (femme)…); `newSpeaker` = a `>>` / label speaker change starts here. */
 export interface Cue { start: number; end: number; text: string; gender?: Gender; newSpeaker?: boolean }
-/** One merged sentence. Times in seconds. `source` = original-language text when `text` is translated. */
-export interface Line { id: string; start: number; end: number; text: string; source?: string; gender?: Gender }
+/** One merged sentence. Times in seconds. `source` = original-language text when `text` is translated. `newSpeaker` (v1.1, optional) = a caption speaker change starts at this line. */
+export interface Line { id: string; start: number; end: number; text: string; source?: string; gender?: Gender; newSpeaker?: boolean }
 /** Output of sync/fit: how to speak one line. `startAt` in seconds (media time), `maxMs` hard cut. */
 export interface Plan { line: Line; rate: number; startAt: number; maxMs: number; trimmed: boolean }
 
@@ -32,6 +32,12 @@ export interface Settings {
   holdDuck: boolean;
   /** Never cut the voice mid-sentence: lines wait for each other and catch up (≤ 2.5 s lag). Default true. */
   continuous: boolean;
+  /** v1.1: use the free on-device neural voices (engine 'neural') once downloaded. Default true. */
+  preferNeural: boolean;
+  /** v1.1 (F): on-device Gemini Nano (Prompt API) shortens French lines that are too long for their slot. Default true. */
+  smartFrench: boolean;
+  /** v1.1 (F): when YouTube has an official / auto-dubbed audio track in the target language, switch to it instead of TTS. Default true. */
+  preferOfficialAudio: boolean;
 }
 
 export interface Secrets { openaiKey?: string; elevenKey?: string }
@@ -47,6 +53,8 @@ export interface DubStatus {
   error?: DubErrorCode;
   message?: string;
   officialTrackLang?: Lang;
+  /** v1.1 (F): true while YouTube's own target-language audio track plays instead of the TTS dub. */
+  usingOfficialAudio?: boolean;
   firstLineMs?: number;
   currentLineId?: string;
 }
@@ -55,6 +63,12 @@ export interface Feedback { videoId: string; lineId: string; lang: Lang; up: boo
 
 export interface TtsRequest { text: string; lang: Lang; engine: 'openai' | 'elevenlabs'; voice: string; speed?: number }
 export interface TtsResult { audioB64: string; mime: string }
+/** v1.1 neural voices (Piper, on this computer). `voice` = neural voice id (see content/voice/neural-catalog.ts). */
+export interface NeuralTtsRequest { text: string; lang: Lang; voice: string }
+/** `pending` = model still downloading (no audio; play Web Speech meanwhile). `ms` = exact duration at rate 1. */
+export interface NeuralTtsResult { audioB64?: string; mime?: string; ms?: number; pending?: boolean; progress?: number; rtf?: number; threads?: number }
+/** Download state of one neural model. `progress` 0..1. */
+export interface NeuralModelState { model: string; ready: boolean; progress?: number; error?: string }
 
 /** Voice descriptor (re-exported by src/content/voice/voices.ts). `lang` is the voice's BCP-47 tag; `quality` higher = better. */
 export interface VoiceInfo { id: string; name: string; lang: string; engine: EngineId; gender: Gender; quality: number }

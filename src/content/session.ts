@@ -6,22 +6,27 @@ import { getLines as realGetLines } from './pipeline';
 import type { GetLinesOptions } from './pipeline';
 import { getTranslatorGlobal } from './translate-local';
 import { LANG_INFO } from '../shared/settings';
-import { getPlayer, getVideo } from './yt';
+import { bridgeRequest, getPlayer, getVideo, restoreOfficialAudio as realRestoreOfficialAudio, switchToOfficialAudio as realSwitchToOfficialAudio } from './yt';
+import type { OfficialAudioResult } from './yt';
+import { warmUpNano as realWarmUpNano } from './text/nano';
 import { createEngine as realCreateEngine } from './voice/engine';
 import type { PlayEnd, PlayHandle, Prepared, TtsEngine } from './voice/engine';
 import { listVoices as realListVoices, pickBestVoice as realPickBestVoice, pickVoiceFor as realPickVoiceFor, resetVoiceChoices as realResetVoiceChoices } from './voice/voices';
 import type { AudioEngineOptions } from './voice/audio';
-import { fit, estimateMs } from './sync/fit';
-import type { Calibration } from './sync/fit';
+import { fit, estimateMs, planTrack, VoiceCalibration, loadVoiceCal as realLoadVoiceCal, saveVoiceCal as realSaveVoiceCal } from './sync/fit';
+import type { Calibration, PacedPlan, VoiceCalEntry } from './sync/fit';
 import { Scheduler } from './sync/scheduler';
 import type { Clock, Speaker } from './sync/scheduler';
 import { PlayerWatcher } from './sync/player';
 import { SpeakerPitch, captionGender } from './sync/pitch';
+import type { SpeechMeasure } from './voice/webspeech';
 
 /** Pre-generate audio this far ahead (s). */
 export const PREFETCH_S = 30;
 /** Max concurrent prepare() calls. */
 export const PREFETCH_CONCURRENCY = 3;
+/** Continuous mode: lines are skipped only beyond this lag (ms); a smooth lag controller keeps it far lower. */
+export const CONTINUOUS_MAX_LAG_MS = 6000;
 const STATS_MAX = 50;
 
 /** Injectable collaborators (tests); defaults are the real modules. */
@@ -39,6 +44,14 @@ export interface DubSessionDeps {
   now: () => number;
   /** Store a time-to-first-line sample. */
   saveStat: (s: FirstLineStat) => Promise<void> | void;
+  /** Per-voice speed calibration (chrome.storage.local 'voiceCal'). */
+  loadVoiceCal: () => Promise<Record<string, VoiceCalEntry>>;
+  saveVoiceCal: (cal: VoiceCalibration) => Promise<void> | void;
+  /** v1.1 (F): start the Gemini Nano download inside the click (smartFrench). */
+  warmUpNano: () => void;
+  /** v1.1 (F): switch to YouTube's own target-language audio track; null/!switched = dub normally. */
+  switchOfficialAudio: (videoId: string, lang: Lang) => Promise<OfficialAudioResult | null>;
+  restoreOfficialAudio: (videoId: string) => void;
 }
 
 export interface FirstLineStat { videoId: string; lang: Lang; engine: EngineId; ms: number; at: number }
@@ -87,6 +100,13 @@ export class DubSession {
   private lineInfo = new Map<string, LineInfo>();
   private fallingBack = false;
   private lineIndex = new Map<string, number>();
+  /** Per-voice speed factors (persisted per voice id). */
+  private vcal = new VoiceCalibration();
+  private calSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Speaker evidence has been read for lines ending at or before this media time. */
+  private observedT = -Infinity;
+  /** v1.1: we switched YouTube's audio track; restore it on stop. */
+  private officialAudio = false;
 
   constructor(opts: DubSessionOptions) {
     this.opts = opts;
@@ -104,6 +124,11 @@ export class DubSession {
       createPitch: (v) => new SpeakerPitch(v),
       now: () => (typeof performance !== 'undefined' ? performance.now() : Date.now()),
       saveStat: saveFirstLineStat,
+      loadVoiceCal: realLoadVoiceCal,
+      saveVoiceCal: realSaveVoiceCal,
+      warmUpNano: realWarmUpNano,
+      switchOfficialAudio: realSwitchToOfficialAudio,
+      restoreOfficialAudio: realRestoreOfficialAudio,
       ...(opts.deps ?? {}),
     };
     this.cal = { voiceSpeed: this.settings.voiceSpeed };
@@ -143,12 +168,32 @@ export class DubSession {
         if (alive() && this.status.state === 'preparing') this.setStatus({ ...this.status, message: `Downloading ${LANG_INFO[lang].name} translator… ${pct}%` });
       });
     } catch { /* optional */ }
+    if (this.settings.smartFrench && lang === 'fr') {
+      try { this.d.warmUpNano(); } catch { /* optional */ }
+    }
+
+    // v1.1: YouTube's own French (official / auto-dub) audio track beats any TTS — switch to it, no dub.
+    if (this.settings.preferOfficialAudio) {
+      let r: OfficialAudioResult | null = null;
+      try { r = await this.d.switchOfficialAudio(this.videoId, lang); } catch { r = null; }
+      if (!alive()) return;
+      if (r?.switched) {
+        this.officialAudio = !r.already;
+        try { this.pitch?.stop(); } catch { /* ignore */ }
+        this.pitch = null;
+        this.setStatus({
+          state: 'dubbing', videoId: this.videoId, officialTrackLang: lang, usingOfficialAudio: true,
+          message: `Using YouTube's official ${LANG_INFO[lang].name} audio`,
+        });
+        return;
+      }
+    }
 
     this.watcher = new PlayerWatcher(video, player, {
       onPause: () => this.scheduler?.pause(),
       onPlay: () => this.scheduler?.resume(),
-      onSeeking: (t) => this.scheduler?.seek(t),
-      onSeeked: (t) => { this.scheduler?.seek(t); this.pump(t); },
+      onSeeking: (t) => { this.scheduler?.seek(t); this.observedT = t; },
+      onSeeked: (t) => { this.scheduler?.seek(t); this.observedT = t; this.pump(t); },
       onRateChange: () => this.scheduler?.rateChanged(),
       onAdStart: () => this.onAdStart(),
       onAdEnd: () => this.onAdEnd(),
@@ -164,6 +209,8 @@ export class DubSession {
         fromTime: video.currentTime || 0,
         // Progressive mode: first ~40 lines resolve, the rest stream in here.
         onUpdate: (all) => { if (alive()) this.applyLines(all); },
+        smartFrench: this.settings.smartFrench,
+        isAlive: alive,
       });
     } catch (e) {
       if (!alive()) return;
@@ -185,6 +232,14 @@ export class DubSession {
     if (!alive()) return;
     if (!ok) return this.fail('NO_VOICE', `No ${lang} voice installed. Add one in System Settings → Accessibility → Spoken Content → System voice → Manage voices.`);
 
+    // Per-voice speed calibration from earlier sessions (≤ 500 ms; missing = learn from scratch).
+    try {
+      const stored = await Promise.race([Promise.resolve(this.d.loadVoiceCal()).catch(() => ({})), sleep(500).then(() => ({}))]);
+      if (!alive()) return;
+      this.vcal = new VoiceCalibration(stored as Record<string, VoiceCalEntry>);
+    } catch { this.vcal = new VoiceCalibration(); }
+    this.observedT = video.currentTime || 0;
+
     const pitchOk = await pitchReady;
     if (!alive()) return;
     if (pitchOk && this.pitch?.hasGraph()) this.watcher.useGain((v) => this.pitch?.setGain(v));
@@ -198,12 +253,15 @@ export class DubSession {
       if (!alive()) return;
     }
 
+    const continuous = this.settings.continuous;
     this.scheduler = new Scheduler(this.lines, this.makeClock(video), this.makeSpeaker(), {
       lang,
       leadMs: this.engineId === 'webspeech' ? 80 : 30,
-      maxLagMs: this.settings.continuous ? 2500 : 0,
+      maxLagMs: continuous ? CONTINUOUS_MAX_LAG_MS : 0,
       video,
-      plan: (line, next) => this.planFor(line, next),
+      // Continuous: whole-track pace plan (clusters, per-voice calibration). Strict: v1.0 per-line fit.
+      plan: continuous ? undefined : (line, next) => this.planFor(line, next),
+      planTrack: (ls) => this.planTrackFor(ls),
       onLineStart: (plan) => this.onLineStart(plan),
       onLineEnd: (plan, overflowMs) => this.onLineEnd(plan, overflowMs),
       onDuck: (on) => { if (!this.settings.holdDuck) this.watcher?.duck(on, this.settings.duckLevel); },
@@ -226,6 +284,10 @@ export class DubSession {
   private teardown(): void {
     this.token++;
     const wasActive = this.active;
+    if (this.officialAudio) {
+      this.officialAudio = false;
+      try { this.d.restoreOfficialAudio(this.videoId); } catch { /* ignore */ }
+    }
     this.active = false;
     if (this.pumpTimer) clearInterval(this.pumpTimer);
     this.pumpTimer = null;
@@ -238,6 +300,11 @@ export class DubSession {
     this.watcher = null;
     try { this.pitch?.stop(); } catch { /* ignore */ }
     this.pitch = null;
+    if (this.calSaveTimer) clearTimeout(this.calSaveTimer);
+    this.calSaveTimer = null;
+    if (this.vcal.isDirty()) {
+      try { void Promise.resolve(this.d.saveVoiceCal(this.vcal)).catch(() => {}); } catch { /* ignore */ }
+    }
     this.prepared.clear();
     this.ready.clear();
     this.inflight = 0;
@@ -287,9 +354,11 @@ export class DubSession {
     this.settings = { ...s, voiceByLang: { ...s.voiceByLang } };
     this.cal = { ...this.cal, voiceSpeed: s.voiceSpeed };
     if (!this.active) return;
+    if (prev.voiceSpeed !== s.voiceSpeed) this.scheduler?.replan();
     const lang = s.targetLang;
     const restart = prev.targetLang !== s.targetLang || prev.engine !== s.engine
-      || prev.voiceByLang[lang] !== s.voiceByLang[lang] || prev.matchSpeakerGender !== s.matchSpeakerGender || prev.continuous !== s.continuous;
+      || prev.voiceByLang[lang] !== s.voiceByLang[lang] || prev.matchSpeakerGender !== s.matchSpeakerGender || prev.continuous !== s.continuous
+      || prev.preferOfficialAudio !== s.preferOfficialAudio;
     if (restart) {
       this.stop();
       void this.start();
@@ -344,6 +413,7 @@ export class DubSession {
     if (!lines.length) return;
     this.lines = [...lines].sort((a, b) => a.start - b.start);
     this.lineIndex = new Map(this.lines.map((l, i) => [l.id, i]));
+    this.observedT = Math.min(this.observedT, this.video?.currentTime ?? this.observedT);
     this.scheduler?.setLines(this.lines);
     if (this.scheduler) this.pump();
   }
@@ -353,6 +423,9 @@ export class DubSession {
     // voiceSpeed is applied through the fit rate, so no provider `speed` (it would apply twice).
     this.engine = id === 'webspeech' ? this.d.createEngine(id) : this.d.createEngine(id, { onFallback: (e) => this.onEngineError(e) });
     this.engineId = id;
+    // Web Speech reports measured speech time per line (onstart→onend) for per-voice calibration.
+    const eng = this.engine as TtsEngine & { onMeasure?: (m: SpeechMeasure) => void };
+    if (eng && id === 'webspeech') eng.onMeasure = (m) => this.onMeasure(m);
   }
 
   /** Resolve voices: user choice, best voice, and per-gender voices when gender matching is on. */
@@ -398,6 +471,62 @@ export class DubSession {
     return this.voiceByGender.get(g) ?? this.voiceByGender.get('unknown');
   }
 
+  /** Calibration key of a voice: engine + language + voice id. */
+  private voiceKey(voice: string | undefined): string {
+    return `${this.engineId}:${this.settings.targetLang}:${voice ?? 'default'}`;
+  }
+
+  /**
+   * Read speaker evidence from every line whose original audio has fully played (stable tracker with hysteresis).
+   * A voice switch changes the speed factor of upcoming lines → replan.
+   */
+  private updateSpeaker(): void {
+    const p = this.pitch;
+    if (!p || !this.settings.matchSpeakerGender) return;
+    const t = this.video?.currentTime ?? 0;
+    if (!(t > this.observedT)) return;
+    const before = p.predicted();
+    const from = this.observedT;
+    for (const line of this.lines) {
+      if (line.end <= from) continue;
+      if (line.end > t) break;
+      try { p.observe(line); } catch { /* ignore */ }
+    }
+    this.observedT = t;
+    if (p.predicted() !== before) this.scheduler?.replan();
+  }
+
+  /** Continuous-mode plan of the whole track: per-line voice speed factor (calibrated, or exact from known audio length). */
+  private planTrackFor(lines: readonly Line[]): PacedPlan[] {
+    const lang = this.settings.targetLang;
+    // Pace reference = mean speed of the voices in use, so male and female voices sound equally fast.
+    const keys = new Set([...this.voiceByGender.values()].map((v) => this.voiceKey(v)));
+    const ref = [...keys].reduce((acc, k) => acc + this.vcal.factor(k), 0) / Math.max(1, keys.size);
+    return planTrack(lines, (l) => {
+      const u = estimateMs(l.text, lang);
+      const voice = this.voiceKey(this.voiceFor(l));
+      const known = this.ready.get(l.id)?.knownMs;
+      const f = known != null && known > 0 && u > 0 ? Math.min(2, Math.max(0.5, u / known)) : this.vcal.factor(voice);
+      return { u, f, voice };
+    }, { voiceSpeed: this.settings.voiceSpeed, refFactor: ref });
+  }
+
+  /** Web Speech measured a line: learn that voice's real speed. */
+  private onMeasure(m: SpeechMeasure): void {
+    if (!this.active) return;
+    const natural = m.speechMs * m.rate; // `rate` already includes the video playbackRate
+    if (this.vcal.update(this.voiceKey(m.voice), estimateMs(m.text, m.lang), natural)) this.scheduler?.replan();
+    this.scheduleCalSave();
+  }
+
+  private scheduleCalSave(): void {
+    if (this.calSaveTimer) return;
+    this.calSaveTimer = setTimeout(() => {
+      this.calSaveTimer = null;
+      try { void Promise.resolve(this.d.saveVoiceCal(this.vcal)).catch(() => {}); } catch { /* ignore */ }
+    }, 5000);
+  }
+
   private makeClock(video: HTMLVideoElement): Clock {
     return {
       now: () => video.currentTime,
@@ -408,7 +537,7 @@ export class DubSession {
 
   private planFor(line: Line, next: Line | undefined): Plan {
     const known = this.ready.get(line.id)?.knownMs;
-    return fit(line, next, this.settings.targetLang, known, this.cal);
+    return fit(line, next, this.settings.targetLang, known, { ...this.cal, cpsFactor: this.vcal.factor(this.voiceKey(this.voiceFor(line))) });
   }
 
   /** Prepare lines starting within the next 30 s (max 3 in flight). Web Speech prepares at speak time (voice depends on the live speaker guess). */
@@ -432,7 +561,15 @@ export class DubSession {
     this.inflight++;
     const p = engine.prepare(line, this.settings.targetLang, this.voiceFor(line)).then(
       (prep) => {
-        if (token === this.token) this.ready.set(line.id, prep);
+        if (token === this.token) {
+          this.ready.set(line.id, prep);
+          // Known audio length: exact pace for this line, and calibration for this voice's later lines.
+          if (prep.knownMs != null && prep.knownMs > 0) {
+            this.vcal.update(this.voiceKey(prep.voice), estimateMs(line.text, this.settings.targetLang), prep.knownMs);
+            this.scheduleCalSave();
+            this.scheduler?.replan();
+          }
+        }
         return prep;
       },
       (e) => {
@@ -458,6 +595,11 @@ export class DubSession {
         for (const h of this.handles) try { h.stop(); } catch { /* ignore */ }
         this.handles.clear();
       },
+      // Gapless chaining: engines that queue (Web Speech) get the next line before the current one ends.
+      canQueue: () => {
+        const e = this.engine as (TtsEngine & { canQueue?: () => boolean }) | null;
+        return !!e && typeof e.canQueue === 'function' && e.canQueue();
+      },
     };
   }
 
@@ -467,15 +609,18 @@ export class DubSession {
     const lang = this.settings.targetLang;
     const engine = this.engine!;
     const volume = this.settings.dubVolume;
+    if (engine.id === 'webspeech') this.updateSpeaker(); // voice chosen now: use the freshest speaker evidence
     const ready = this.ready.get(line.id);
-    const startedAt = this.d.now();
+    const continuous = this.settings.continuous;
     const lazy = new LazyHandle();
     this.handles.add(lazy);
     lazy.done.then(() => this.handles.delete(lazy));
     const play = (prep: Prepared) => {
       if (lazy.isStopped()) return lazy.end('stopped');
+      // Strict mode drops a line that became > 0.3 s late. Continuous mode starts lines late on purpose (chained after
+      // the previous one): v1.0 dropped those too, which made the silence holes. Only a lag beyond the skip limit drops.
       const lateS = (this.video?.currentTime ?? plan.startAt) - plan.startAt;
-      if (lateS > 0.3) return lazy.end('stopped');
+      if (lateS > (continuous ? CONTINUOUS_MAX_LAG_MS / 1000 : 0.3)) return lazy.end('stopped');
       let inner: PlayHandle;
       try {
         inner = engine.play(prep, plan.rate, volume);
@@ -486,7 +631,6 @@ export class DubSession {
       lazy.attach(inner);
       inner.done.then((r) => {
         if (r === 'error') this.onEngineError(new Error('playback failed'));
-        else if (r === 'ended' && engine.id === 'webspeech' && prep.knownMs == null) this.calibrate(line, plan.rate, this.d.now() - startedAt);
       });
     };
     if (ready) {
@@ -498,17 +642,6 @@ export class DubSession {
       p.then(play, () => lazy.end('error'));
     }
     return lazy;
-  }
-
-  /** Learn the voice's real speed (EWMA) so estimateMs fits better over the session. */
-  private calibrate(line: Line, rate: number, wallMs: number): void {
-    if (!(wallMs > 300)) return;
-    const est = estimateMs(line.text, this.settings.targetLang); // at cpsFactor 1
-    const naturalMs = wallMs * rate; // `rate` already includes video playbackRate
-    if (!(naturalMs > 0) || !(est > 0)) return;
-    const ratio = Math.min(1.6, Math.max(0.6, est / naturalMs));
-    const prev = this.cal.cpsFactor ?? 1;
-    this.cal = { ...this.cal, cpsFactor: prev * 0.8 + ratio * 0.2 };
   }
 
   private onEngineError(e: unknown): void {
@@ -533,9 +666,8 @@ export class DubSession {
 
   private onLineStart(plan: Plan): void {
     const line = plan.line;
-    // Update the speaker guess from the original audio of lines that have played.
-    const i = this.lineIndex.get(line.id) ?? -1;
-    if (this.pitch && i > 0) this.pitch.observe(this.lines[i - 1]);
+    // Update the (stable) speaker guess from the original audio of lines that have played.
+    this.updateSpeaker();
     this.lineInfo.set(line.id, { rate: plan.rate, overflowMs: 0 });
     if (this.lineInfo.size > 2000) this.lineInfo.delete(this.lineInfo.keys().next().value as string);
     this.setCurrent(line);
@@ -653,7 +785,11 @@ class LazyHandle implements PlayHandle {
 export function warmUpTranslator(to: Lang, onProgress?: (pct: number) => void): void {
   if (to === 'en') return;
   const T = getTranslatorGlobal();
-  if (!T) return;
+  if (!T) {
+    // v1.1 (F): no Translator in the isolated world → warm it up in the page world (same window activation).
+    try { void bridgeRequest('translatorWarmup', { from: 'en', to }, { timeoutMs: 3000 }).catch(() => {}); } catch { /* ignore */ }
+    return;
+  }
   const p = T.create({
     sourceLanguage: 'en',
     targetLanguage: to,

@@ -11,8 +11,138 @@ const SILENCE_RMS = 0.01;
 const VOICED_CORR = 0.5;
 const FRAME_KEEP_S = 180;
 
-/** One analysis frame: media time (s) and F0 in Hz (null = unvoiced/silent). */
-export interface PitchFrame { t: number; f0: number | null }
+/** One analysis frame: media time (s), F0 in Hz (null = unvoiced/silent), RMS level (optional). */
+export interface PitchFrame { t: number; f0: number | null; rms?: number }
+
+/** RMS level of a buffer (DC removed). */
+export function bufRms(buf: Float32Array): number {
+  const n = buf.length;
+  if (!n) return 0;
+  let sum = 0, sq = 0;
+  for (let i = 0; i < n; i++) { sum += buf[i]; sq += buf[i] * buf[i]; }
+  const mean = sum / n;
+  return Math.sqrt(Math.max(0, sq / n - mean * mean));
+}
+
+// ---------------------------------------------------------------- v1.1 stable speaker tracking
+
+/** Median F0 below this = confidently male. */
+export const CONF_MALE_HZ = 155;
+/** Median F0 above this = confidently female (unless shouting). */
+export const CONF_FEMALE_HZ = 205;
+/** Minimum time between two evidence-only voice switches (s). */
+export const MIN_SWITCH_S = 6;
+/** Loudness percentile (per video) above which a high F0 counts as shouting, not as a female voice. */
+export const LOUD_PERCENTILE = 0.8;
+
+/** What one line of original audio tells about its speaker. */
+export interface LineEvidence {
+  /** Media time of the line start (s). */
+  t: number;
+  /** Median F0 of voiced frames (Hz), null if none. */
+  f0: number | null;
+  /** Share of voiced frames 0..1. */
+  voicedShare: number;
+  /** Median RMS of voiced frames, null if unknown. */
+  rms: number | null;
+  /** The captions mark a speaker change at this line (">>", "- ", "NAME:"). */
+  marker?: boolean;
+  /** Caption speaker label gender ([Man], (femme)…): authoritative. */
+  hint?: Gender;
+}
+
+/**
+ * Stable speaker gender with hysteresis. Switches only on: a caption gender label; a speaker-change marker plus confident
+ * opposite evidence (on that line or the next confident one); or 2 consecutive confident opposite lines at least 6 s after
+ * the last switch. Between 155 and 205 Hz = no evidence. A high F0 that is also among the loudest 20 % of this video's
+ * lines is a shouting man as often as a woman: no evidence.
+ */
+export class SpeakerTracker {
+  private cur: Gender = 'unknown';
+  private lastSwitch = -Infinity;
+  private opposite = 0;
+  private markerPending = false;
+  private loud: number[] = [];
+  /** Number of switches (tests/diagnostics). */
+  switches = 0;
+
+  current(): Gender { return this.cur; }
+
+  reset(): void {
+    this.cur = 'unknown';
+    this.lastSwitch = -Infinity;
+    this.opposite = 0;
+    this.markerPending = false;
+    this.loud = [];
+    this.switches = 0;
+  }
+
+  /** Confident gender of one line's evidence, or 'unknown'. Also records its loudness. */
+  classify(ev: LineEvidence): Gender {
+    const rms = ev.rms != null && Number.isFinite(ev.rms) && ev.rms > 0 ? ev.rms : null;
+    if (rms != null) {
+      this.loud.push(rms);
+      if (this.loud.length > 400) this.loud.shift();
+    }
+    if (ev.f0 == null || !Number.isFinite(ev.f0) || ev.voicedShare < MIN_VOICED_SHARE) return 'unknown';
+    if (ev.f0 < CONF_MALE_HZ) return 'male';
+    if (ev.f0 <= CONF_FEMALE_HZ) return 'unknown';
+    if (rms != null && this.loud.length >= 5) {
+      const sorted = [...this.loud].sort((a, b) => a - b);
+      const thr = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * LOUD_PERCENTILE))];
+      if (rms > thr) return 'unknown'; // shouting guard
+    }
+    return 'female';
+  }
+
+  /** Feed the evidence of a line whose original audio has played. Returns the speaker gender to use from now on. */
+  observe(ev: LineEvidence): Gender {
+    if (ev.marker) { this.markerPending = true; this.opposite = 0; }
+    if (ev.hint && ev.hint !== 'unknown') {
+      this.classify(ev); // keep loudness stats
+      this.markerPending = false;
+      this.opposite = 0;
+      if (ev.hint !== this.cur) this.switchTo(ev.hint, ev.t);
+      return this.cur;
+    }
+    const g = this.classify(ev);
+    if (g === 'unknown') {
+      this.opposite = 0; // "consecutive" means adjacent lines: an unclear line breaks the run
+      return this.cur;
+    }
+    if (this.cur === 'unknown') {
+      this.markerPending = false;
+      this.switchTo(g, ev.t);
+      return this.cur;
+    }
+    if (g === this.cur) {
+      this.opposite = 0;
+      this.markerPending = false;
+      return this.cur;
+    }
+    if (this.markerPending) {
+      this.markerPending = false;
+      this.switchTo(g, ev.t);
+      return this.cur;
+    }
+    this.opposite++;
+    if (this.opposite >= 2 && ev.t - this.lastSwitch >= MIN_SWITCH_S) this.switchTo(g, ev.t);
+    return this.cur;
+  }
+
+  private switchTo(g: Gender, t: number): void {
+    if (this.cur !== 'unknown' && g !== this.cur) this.switches++;
+    this.cur = g;
+    this.lastSwitch = t;
+    this.opposite = 0;
+  }
+}
+
+/** Caption speaker-change marker of a line: `Line.newSpeaker`, or a ">>" / dialogue-dash prefix still in the text. */
+export function speakerMarker(line: Line): boolean {
+  if (line.newSpeaker) return true;
+  return /^\s*(?:>>|[-–—]\s)/.test(line.source ?? '') || /^\s*(?:>>|[-–—]\s)/.test(line.text);
+}
 
 /**
  * Autocorrelation F0 estimate of a mono buffer. Returns Hz, or null when silent or unvoiced.
@@ -114,7 +244,6 @@ export class SpeakerPitch {
   private timer: ReturnType<typeof setInterval> | null = null;
   private frames: PitchFrame[] = [];
   private buf: Float32Array<ArrayBuffer> | null = null;
-  private last: Gender = 'unknown';
   private failed = false;
   private stopped = false;
 
@@ -188,8 +317,8 @@ export class SpeakerPitch {
   hasGraph(): boolean { return !!this.graph; }
 
   /** Record one frame (sampling loop; public for tests). */
-  addFrame(t: number, f0: number | null): void {
-    this.frames.push({ t, f0 });
+  addFrame(t: number, f0: number | null, rms?: number): void {
+    this.frames.push(rms != null ? { t, f0, rms } : { t, f0 });
     const cutoff = t - FRAME_KEEP_S;
     if (this.frames.length > 4000 || (this.frames[0] && this.frames[0].t < cutoff)) {
       this.frames = this.frames.filter((f) => f.t >= cutoff && f.t <= t + 1);
@@ -207,15 +336,42 @@ export class SpeakerPitch {
     }
   }
 
-  /** Update the running speaker guess from a line whose original audio has played; unknown keeps the previous guess. */
-  observe(line: Line): Gender {
-    const g = this.genderFor(line);
-    if (g !== 'unknown') this.last = g;
-    return this.last;
+  /** Evidence (median F0, voiced share, median RMS) of the original audio over [start, end]. */
+  evidence(line: Line): LineEvidence {
+    const fr = this.frames.filter((f) => f.t >= line.start && f.t <= line.end);
+    const voiced = fr.filter((f) => f.f0 != null && Number.isFinite(f.f0));
+    const med = (a: number[]) => {
+      if (!a.length) return null;
+      a.sort((x, y) => x - y);
+      const m = a.length >> 1;
+      return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+    };
+    return {
+      t: line.start,
+      f0: med(voiced.map((f) => f.f0 as number)),
+      voicedShare: fr.length ? voiced.length / fr.length : 0,
+      rms: med(voiced.map((f) => f.rms).filter((v): v is number => v != null)),
+      marker: speakerMarker(line),
+      hint: captionGender(line),
+    };
   }
 
-  /** Predicted gender of the next line (= last known speaker; 'unknown' before the first). */
-  predicted(): Gender { return this.last; }
+  /**
+   * Update the speaker guess from a line whose original audio has played (stable: see SpeakerTracker).
+   * `marker` overrides the line's own speaker-change marker.
+   */
+  observe(line: Line, marker?: boolean): Gender {
+    let ev: LineEvidence;
+    try { ev = this.evidence(line); } catch { return this.tracker.current(); }
+    if (marker != null) ev.marker = marker;
+    return this.tracker.observe(ev);
+  }
+
+  /** Predicted gender of the next line (= current stable speaker; 'unknown' before the first). */
+  predicted(): Gender { return this.tracker.current(); }
+
+  /** The stable speaker tracker (diagnostics/tests). */
+  readonly tracker = new SpeakerTracker();
 
   /** Original-audio gain 0..1 (ducking) when the graph exists. */
   setGain(v: number): void {
@@ -238,7 +394,7 @@ export class SpeakerPitch {
     this.timer = null;
     this.setGain(1);
     this.frames = [];
-    this.last = 'unknown';
+    this.tracker.reset();
   }
 
   private sample(): void {
@@ -249,7 +405,7 @@ export class SpeakerPitch {
     try {
       if (g.ctx.state === 'suspended') void g.ctx.resume().catch(() => {});
       g.analyser.getFloatTimeDomainData(this.buf);
-      this.addFrame(v.currentTime, estimateF0(this.buf, g.ctx.sampleRate));
+      this.addFrame(v.currentTime, estimateF0(this.buf, g.ctx.sampleRate), bufRms(this.buf));
     } catch {
       /* keep going; genderFor falls back to unknown */
     }

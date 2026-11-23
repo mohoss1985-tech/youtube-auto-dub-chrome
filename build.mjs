@@ -32,6 +32,13 @@ const builds = [
   { ...common, entryPoints: ['src/content/index.ts'], outfile: path.join(outdir, 'content.js'), format: 'iife' },
   { ...common, entryPoints: ['src/background/index.ts'], outfile: path.join(outdir, 'background.js'), format: 'esm' },
   { ...common, entryPoints: ['src/popup/popup.ts'], outfile: path.join(outdir, 'popup.js'), format: 'iife' },
+  // v1.1 neural voices (Piper): offscreen document + module Worker (onnxruntime-web + piper-phonemize, all bundled).
+  { ...common, entryPoints: ['src/offscreen/offscreen.ts'], outfile: path.join(outdir, 'offscreen.js'), format: 'iife' },
+  {
+    ...common, entryPoints: ['src/offscreen/piper-worker.ts'], outfile: path.join(outdir, 'piper-worker.js'), format: 'esm',
+    // piper_phonemize.js has Node-only branches (never run in a browser).
+    external: ['fs', 'path', 'crypto'],
+  },
 ];
 
 function copyStatic() {
@@ -39,6 +46,14 @@ function copyStatic() {
   fs.copyFileSync('src/popup/popup.html', path.join(outdir, 'popup.html'));
   fs.copyFileSync('src/popup/popup.css', path.join(outdir, 'popup.css'));
   fs.cpSync('icons', path.join(outdir, 'icons'), { recursive: true });
+  fs.copyFileSync('src/offscreen/offscreen.html', path.join(outdir, 'offscreen.html'));
+  // WASM + data shipped inside the package (MV3: no remote code). Models (.onnx) are downloaded at runtime as data.
+  fs.mkdirSync(path.join(outdir, 'ort'), { recursive: true });
+  fs.copyFileSync('node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm', path.join(outdir, 'ort', 'ort-wasm-simd-threaded.wasm'));
+  fs.mkdirSync(path.join(outdir, 'piper'), { recursive: true });
+  for (const f of ['piper_phonemize.wasm', 'piper_phonemize.data']) {
+    fs.copyFileSync(path.join('node_modules/@diffusionstudio/piper-wasm/build', f), path.join(outdir, 'piper', f));
+  }
 }
 
 if (watch) {

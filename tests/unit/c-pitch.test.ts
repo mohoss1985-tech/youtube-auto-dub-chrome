@@ -44,7 +44,10 @@ describe('SpeakerPitch gender', () => {
     expect(p.predicted()).toBe('unknown'); // first line: nothing known yet
     expect(p.observe(line(0, 2))).toBe('male');
     expect(p.observe(line(4, 6))).toBe('male'); // unknown keeps previous
-    expect(p.observe(line(2, 4))).toBe('female');
+    // v1.1 hysteresis: one opposite line without a speaker-change marker does not flip…
+    expect(p.observe(line(2, 4))).toBe('male');
+    // …a marker plus confident evidence does.
+    expect(p.observe(line(2, 4), true)).toBe('female');
     expect(p.predicted()).toBe('female');
   });
   it('< 30 % voiced frames → unknown', () => {

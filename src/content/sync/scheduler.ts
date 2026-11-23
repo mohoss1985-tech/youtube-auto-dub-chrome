@@ -1,7 +1,8 @@
 // Media-time-driven line scheduler (§5). Owner: C.
 import type { Lang, Line, Plan } from '../../shared/types';
 import type { PlayEnd, PlayHandle } from '../voice/engine';
-import { fit } from './fit';
+import { estimateMs, fit, planTrack } from './fit';
+import type { PacedPlan } from './fit';
 
 /** Media clock (seconds). Real: wraps <video>; tests: fake clock. */
 export interface Clock {
@@ -16,6 +17,11 @@ export interface Clock {
 export interface Speaker {
   speak(plan: Plan): PlayHandle;
   stopAll(): void;
+  /**
+   * True when speak() may be called while a line is still playing and the engine will start the new line right
+   * after it, gaplessly (Web Speech queue). Continuous mode then pre-queues the next line near the end of the current one.
+   */
+  canQueue?(): boolean;
 }
 
 export interface SchedulerOptions {
@@ -25,13 +31,20 @@ export interface SchedulerOptions {
   /** Skip a not-started line this late (default 300 ms). */
   lateSkipMs?: number;
   /**
-   * Continuous mode (> 0): never cut a line because the next one is due. The next line waits for the
-   * current one to finish and then starts with a catch-up rate. Lag is bounded by this value: lines
-   * later than this when the voice is free are skipped. 0 = strict mode (cut overruns, 300 ms late skip).
+   * Continuous mode (> 0): never cut a line mid-sentence. The whole track is planned ahead (`planTrack`: clusters,
+   * one smooth pace per cluster); lines chain back to back; a gentle lag controller adds ≤ 0.12 rate.
+   * Lines are skipped only when the lag exceeds this value (then resync at a sentence boundary).
+   * 0 = strict mode (cut overruns, 300 ms late skip). The session uses 6000.
    */
   maxLagMs?: number;
-  /** Extra rate multiplier allowed to catch up in continuous mode (default 1.35). */
+  /** @deprecated v1.0 per-line catch-up multiplier; unused since v1.1 (lag control is proportional). */
   maxCatchUp?: number;
+  /** Continuous mode: plan the whole track (default: planTrack with the prior CPS, one voice). */
+  planTrack?: (lines: readonly Line[]) => PacedPlan[];
+  /** Continuous mode: max |rate change| between consecutive lines of the same voice (default 0.08). */
+  maxRateStep?: number;
+  /** Continuous mode: start the next line right away when the voice frees up and it is due within this (s, default 0.7). */
+  fillGapS?: number;
   /** Tick period in ms (default 50). */
   tickMs?: number;
   /** Build a plan for line i (default: fit(lines[i], lines[i+1], lang)). */
@@ -56,6 +69,8 @@ export interface SchedulerOptions {
 
 interface Current {
   plan: Plan;
+  /** Estimated media seconds of speech at `rate` (continuous mode). */
+  durS?: number;
   index: number;
   handle: PlayHandle;
   /** Media time when speech started. */
@@ -70,7 +85,10 @@ type RvfcVideo = HTMLVideoElement & {
   cancelVideoFrameCallback?: (h: number) => void;
 };
 
-/** Drives speech from clock time; lag never carries over (late lines skipped, overruns cut). */
+/**
+ * Drives speech from clock time. Strict mode: lag never carries over (late lines skipped, overruns cut).
+ * Continuous mode (maxLagMs > 0): whole-track pace plan, back-to-back lines, gentle lag control, no mid-sentence cuts.
+ */
 export class Scheduler {
   private lines: Line[];
   private readonly clock: Clock;
@@ -89,6 +107,14 @@ export class Scheduler {
   private seq = 0;
   /** startAt of the last line started (setLines must not replay it). */
   private lastStartedAt: number | null = null;
+  /** Continuous mode: plans for `lines` (null = recompute). */
+  private plans: PacedPlan[] | null = null;
+  /** Continuous mode: line already handed to the engine queue, waiting for the current one to end. */
+  private queued: Current | null = null;
+  /** Lag controller output (EMA, added to the planned rate). */
+  private extra = 0;
+  /** Previous spoken line (rate limiter): media rate (before playbackRate) and voice factor. */
+  private prev: { rate: number; factor: number; voice?: string } | null = null;
 
   constructor(lines: Line[], clock: Clock, speaker: Speaker, opts?: SchedulerOptions) {
     this.lines = [...lines].sort((a, b) => a.start - b.start);
@@ -111,6 +137,7 @@ export class Scheduler {
   /** Stop ticking and all speech. */
   stop(): void {
     this.running = false;
+    this.dropQueued();
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     const v = this.o.video as RvfcVideo | null | undefined;
@@ -162,19 +189,17 @@ export class Scheduler {
     }
 
     const busy = !!this.cur && !this.cur.ended;
-    // Skip lines that are too late to start. Continuous: only when the voice is free, with the larger lag budget.
-    const skipAfter = continuous ? Math.max(late, this.o.maxLagMs / 1000) : late;
-    if (!continuous || !busy) {
-      while (this.cursor < this.lines.length && t > this.lines[this.cursor].start + skipAfter) this.cursor++;
-    }
-
-    const next = this.lines[this.cursor];
-    if (next && t >= next.start - lead && continuous && busy) {
-      // Let the current line finish; the next one starts right after it (no cut, no gap).
-    } else if (next && t >= next.start - lead) {
-      this.startLine(this.cursor, t);
-    } else if (next && !this.ducked && t >= next.start - lead - this.o.duckLeadMs / 1000) {
-      this.setDuck(true);
+    if (continuous) {
+      this.tickContinuous(t, busy, lead);
+    } else {
+      // Strict: skip lines that are too late to start.
+      while (this.cursor < this.lines.length && t > this.lines[this.cursor].start + late) this.cursor++;
+      const next = this.lines[this.cursor];
+      if (next && t >= next.start - lead) {
+        this.startLine(this.cursor, t);
+      } else if (next && !this.ducked && t >= next.start - lead - this.o.duckLeadMs / 1000) {
+        this.setDuck(true);
+      }
     }
 
     // Restore the original audio after speech, unless the next line is close.
@@ -191,6 +216,9 @@ export class Scheduler {
   /** Stop speech and binary-search the cursor to media time `t` (seconds). */
   seek(t: number): void {
     this.cutCurrent();
+    this.dropQueued();
+    this.prev = null;
+    this.extra = 0;
     try { this.speaker.stopAll(); } catch { /* ignore */ }
     this.cursor = lowerBound(this.lines, t - this.o.lateSkipMs / 1000);
     this.lastStartedAt = null;
@@ -204,6 +232,9 @@ export class Scheduler {
     if (this.cur && !this.cur.ended) {
       try { this.cur.handle.pause(); } catch { /* ignore */ }
     }
+    if (this.queued && !this.queued.ended) {
+      try { this.queued.handle.pause(); } catch { /* ignore */ }
+    }
   }
 
   resume(): void {
@@ -211,6 +242,9 @@ export class Scheduler {
     this.pausedFlag = false;
     if (this.cur && !this.cur.ended) {
       try { this.cur.handle.resume(); } catch { /* ignore */ }
+    }
+    if (this.queued && !this.queued.ended) {
+      try { this.queued.handle.resume(); } catch { /* ignore */ }
     }
     this.lastT = this.clock.now();
     this.tick();
@@ -230,45 +264,161 @@ export class Scheduler {
   /** Replace lines (e.g. after translation of later batches); keeps cursor by time. */
   setLines(lines: Line[]): void {
     this.lines = [...lines].sort((a, b) => a.start - b.start);
+    this.plans = null;
     // Next line = first one not yet due-and-missed, and after the last line already started (never replay).
     let c = lowerBound(this.lines, this.clock.now() - this.o.lateSkipMs / 1000);
     if (this.lastStartedAt != null) c = Math.max(c, upperBound(this.lines, this.lastStartedAt));
+    if (this.queued && this.lastStartedAt != null) c = Math.max(c, upperBound(this.lines, this.queued.plan.line.start));
     this.cursor = c;
+  }
+
+  /** Continuous mode: recompute the track plan (voice calibration or speaker voice changed). Lines already playing keep their rate. */
+  replan(): void { this.plans = null; }
+
+  /** Continuous mode: plan for line i (null in strict mode). */
+  planAt(i: number): PacedPlan | null {
+    if (!(this.o.maxLagMs > 0) || this.o.plan) return null;
+    if (!this.plans || this.plans.length !== this.lines.length) {
+      const lang = this.o.lang ?? 'en';
+      this.plans = this.o.planTrack ? this.o.planTrack(this.lines) : planTrack(this.lines, (l) => ({ u: estimateMs(l.text, lang), f: 1 }));
+      if (this.plans.length !== this.lines.length) this.plans = planTrack(this.lines, (l) => ({ u: estimateMs(l.text, lang), f: 1 }));
+    }
+    return this.plans[i] ?? null;
   }
 
   // ---------------- internals ----------------
 
-  private startLine(i: number, t: number): void {
+  /** Continuous mode step: chain lines, pre-queue, early starts, skip only beyond maxLag (resync at a sentence boundary). */
+  private tickContinuous(t: number, busy: boolean, lead: number): void {
+    const skipS = this.o.maxLagMs / 1000;
+    const fill = this.o.fillGapS ?? 0.7;
+    if (!busy) {
+      // Promote a pre-queued line whose predecessor ended (normally done in onDone).
+      if (this.queued) this.promote(t);
+      if (this.cur && !this.cur.ended) return;
+      const nx = this.lines[this.cursor];
+      if (nx && t > nx.start + skipS) this.resync(t);
+      const next = this.lines[this.cursor];
+      if (!next) return;
+      const plan = this.planAt(this.cursor);
+      const startAt = plan ? plan.startAt : next.start;
+      const justFreed = this.speechEndT != null && t - this.speechEndT <= 0.25;
+      if (t >= startAt - lead || (justFreed && t >= next.start - fill)) {
+        this.startLine(this.cursor, t);
+      } else if (!this.ducked && t >= startAt - lead - this.o.duckLeadMs / 1000) {
+        this.setDuck(true);
+      }
+      return;
+    }
+    // Busy: pre-queue the next line near the end of the current one so the engine chains them with no gap.
+    if (this.queued || !this.speaker.canQueue?.()) return;
+    const cur = this.cur!;
+    const next = this.lines[this.cursor];
+    if (!next || cur.durS == null) return;
+    const estEnd = cur.t0 + cur.durS;
+    if (t < estEnd - 0.3) return;
+    if (next.start - fill > estEnd) return; // a real pause follows: start it on time instead
+    if (estEnd > next.start + skipS) return; // would be skipped anyway
+    this.startLine(this.cursor, t, Math.max(t, estEnd));
+  }
+
+  /**
+   * Lag > maxLag: drop the backlog and continue with a sentence that started at most 1.5 s ago (or starts within 1 s),
+   * preferring one that begins a sentence. The rate limiter keeps its state, so the pace stays smooth across the jump.
+   */
+  private resync(t: number): void {
+    const j0 = lowerBound(this.lines, t - 1.5);
+    let j = j0;
+    for (let k = j0; k < Math.min(this.lines.length, j0 + 4) && this.lines[k].start <= t + 1; k++) {
+      const prevText = this.lines[k - 1]?.text ?? '.';
+      if (/[.!?…。؟]["'»”)\]]*\s*$/.test(prevText)) { j = k; break; }
+    }
+    this.cursor = Math.max(this.cursor, j);
+  }
+
+  /** Rate for a continuous-mode line starting at media time `at`: plan + smoothed lag control, capped, step-limited. */
+  private continuousRate(plan: PacedPlan, at: number): number {
+    const lag = at - plan.line.start;
+    const target = Math.min(0.12, Math.max(0, lag / 8));
+    this.extra += 0.35 * (target - this.extra);
+    let r = Math.min(plan.cap, plan.rate + this.extra);
+    const step = this.o.maxRateStep ?? 0.08;
+    const p = this.prev;
+    if (p) {
+      if (p.voice === plan.voice) {
+        r = Math.min(p.rate + step, Math.max(p.rate - step, r));
+      } else {
+        // Different voice: keep the perceived pace (rate × voice speed) continuous instead of the raw rate.
+        const q = r * plan.factor;
+        const qp = p.rate * p.factor;
+        r = Math.min(qp + step, Math.max(qp - step, q)) / plan.factor;
+      }
+    }
+    r = Math.max(0.5, Math.min(plan.cap, r));
+    this.prev = { rate: r, factor: plan.factor, voice: plan.voice };
+    return r;
+  }
+
+  private promote(t: number): void {
+    const q = this.queued;
+    this.queued = null;
+    if (!q || q.ended) return;
+    q.t0 = t;
+    this.cur = q;
+    this.speechEndT = null;
+    this.o.onLineStart?.({ ...q.plan, rate: q.rate }, (t - q.plan.startAt) * 1000);
+  }
+
+  private dropQueued(): void {
+    const q = this.queued;
+    this.queued = null;
+    if (!q || q.ended) return;
+    q.ended = true;
+    try { q.handle.stop(); } catch { /* ignore */ }
+  }
+
+  private startLine(i: number, t: number, queueAt?: number): void {
     const line = this.lines[i];
     this.cursor = i + 1;
     this.lastStartedAt = line.start;
-    if (this.cur && !this.cur.ended) this.cutCurrent(); // previous overran: cut
-    const plan = (this.o.plan ?? ((l, n) => fit(l, n, this.o.lang ?? 'en')))(line, this.lines[i + 1]);
+    const queue = queueAt != null;
+    if (!queue && this.cur && !this.cur.ended) this.cutCurrent(); // strict: previous overran → cut
+    const paced = this.planAt(i);
+    const plan: Plan = paced ?? (this.o.plan ?? ((l, n) => fit(l, n, this.o.lang ?? 'en')))(line, this.lines[i + 1]);
     const vr = safeRate(this.clock.playbackRate());
-    const wanted = plan.rate * vr;
-    // Video sped up so much the voice cannot keep up: skip lines that would lose more than a third.
-    if (wanted / this.o.maxTotalRate > 1.5) return;
-    let rate = Math.min(wanted, this.o.maxTotalRate);
-    // Continuous mode: started late because the previous line ran long → speak a bit faster to catch up.
-    const lag = t - line.start;
-    if (this.o.maxLagMs > 0 && lag > 0.15) {
-      const dur = Math.max(1, line.end - line.start);
-      const boost = Math.min(this.o.maxCatchUp, 1 + lag / dur);
-      rate = Math.min(rate * boost, this.o.maxTotalRate);
+    let rate: number;
+    if (paced) {
+      rate = this.continuousRate(paced, queueAt ?? t) * vr;
+      if (rate / this.o.maxTotalRate > 1.5) return; // video far too fast for any voice
+      rate = Math.min(rate, this.o.maxTotalRate);
+    } else {
+      const wanted = plan.rate * vr;
+      // Video sped up so much the voice cannot keep up: skip lines that would lose more than a third.
+      if (wanted / this.o.maxTotalRate > 1.5) return;
+      rate = Math.min(wanted, this.o.maxTotalRate);
+      // Legacy continuous mode with a custom per-line plan: proportional catch-up.
+      const lag = t - line.start;
+      if (this.o.maxLagMs > 0 && lag > 0.15) rate = Math.min(rate * (1 + Math.min(0.12, lag / 8)), this.o.maxTotalRate);
     }
-    this.setDuck(true);
+    if (!queue) this.setDuck(true);
     let handle: PlayHandle;
     try {
       handle = this.speaker.speak({ ...plan, rate });
     } catch {
-      this.speechEndT = t;
+      if (!queue) this.speechEndT = t;
       return;
     }
-    const cur: Current = { plan, index: i, handle, t0: t, rate, ended: false };
-    this.cur = cur;
-    this.speechEndT = null;
+    // Media seconds of speech: natural ms / effective rate, × video rate.
+    const durS = paced ? ((paced.estMs * paced.rate) / rate) * vr / 1000 : undefined;
+    const cur: Current = { plan, index: i, handle, t0: queueAt ?? t, rate, ended: false, durS };
     const id = ++this.seq;
-    this.o.onLineStart?.({ ...plan, rate }, (t - plan.startAt) * 1000);
+    if (queue) {
+      this.queued = cur;
+    } else {
+      this.cur = cur;
+      this.speechEndT = null;
+      this.o.onLineStart?.({ ...plan, rate }, (t - plan.startAt) * 1000);
+    }
     Promise.resolve(handle.done).then(
       (r: PlayEnd) => this.onDone(cur, id, r),
       () => this.onDone(cur, id, 'error'),
@@ -277,7 +427,17 @@ export class Scheduler {
 
   private onDone(cur: Current, _id: number, _r: PlayEnd): void {
     if (cur.ended) return;
+    if (this.queued === cur) {
+      // Queued line finished before its predecessor was seen to end (engine skipped it): just drop it.
+      this.queued = null;
+      cur.ended = true;
+      return;
+    }
     this.finish(cur);
+    if (this.cur === cur && this.queued && this.running) {
+      const t = this.clock.now();
+      this.promote(Number.isFinite(t) ? t : cur.t0);
+    }
   }
 
   /** Mark a line finished and report overflow past the line's own end (media ms). */

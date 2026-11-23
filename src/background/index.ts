@@ -7,6 +7,8 @@ import { DubError, type Secrets, type TtsResult } from '../shared/types';
 import { translateBatch } from './translate';
 import { synthesize } from './tts';
 import { cacheGet, cachePut } from './cache';
+import { onNeuralStatus, onNeuralTts, onOffscreenEvent } from './neural';
+import { isOffscreenEventMsg } from '../offscreen/protocol';
 
 /** Per-request network budget (§2): abort after 20 s → content falls back. */
 export const SW_TIMEOUT_MS = 20_000;
@@ -97,6 +99,8 @@ export async function handleMessage(msg: SWMsg): Promise<MsgResponse<object>> {
       case 'TTS': return await onTts(msg);
       case 'CACHE_GET': return await onCacheGet(msg);
       case 'CACHE_PUT': return await onCachePut(msg);
+      case 'NEURAL_TTS': return await onNeuralTts(msg);
+      case 'NEURAL_STATUS': return await onNeuralStatus(msg);
     }
   } catch (e) {
     return toMsgError(e);
@@ -113,6 +117,7 @@ export async function onCommand(command: string): Promise<void> {
 
 if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
+    if (sender.id === chrome.runtime.id && isOffscreenEventMsg(msg)) { onOffscreenEvent(msg); return false; }
     if (sender.id !== chrome.runtime.id || !isSWMsg(msg)) return false; // STATUS etc. are not for us
     handleMessage(msg).then(sendResponse);
     return true; // async response

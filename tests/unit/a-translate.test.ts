@@ -14,7 +14,7 @@ vi.mock('../../src/content/yt', () => ({
 
 import * as yt from '../../src/content/yt';
 import { translateLocal, runTranslator } from '../../src/content/translate-local';
-import { getLines, _resetPipeline, planChunks } from '../../src/content/pipeline';
+import { getLines, _resetPipeline, planChunks, cacheKey } from '../../src/content/pipeline';
 import { translateBatch, parseTranslations, OPENAI_CHAT_URL } from '../../src/background/translate';
 
 const fx = (n: string) => JSON.parse(fs.readFileSync(path.join(__dirname, '../fixtures', n), 'utf8')) as Json3;
@@ -156,7 +156,7 @@ describe('getLines pipeline + fallback chain', () => {
     const lines = await getLines('vid', 'en', (m) => progress.push(m));
     expect(lines[0]!.text).toBe('Hello everyone, and welcome to our garden.');
     expect(lines[0]!.gender).toBe('female');
-    expect(cache.get('lines:vid:en')).toEqual(lines);
+    expect(cache.get(cacheKey('vid', 'en'))).toEqual(lines);
     expect(yt.getJson3).toHaveBeenCalledTimes(1);
     expect(progress[0]).toBe('Loading captions…');
     // second call: cache hit, no YouTube work
@@ -186,7 +186,7 @@ describe('getLines pipeline + fallback chain', () => {
     expect(lines[0]).toMatchObject({ text: '[fr] Hello everyone, and welcome to our garden.', source: 'Hello everyone, and welcome to our garden.', gender: 'female' });
     expect(lines).toHaveLength(7);
     expect(progress.some((m) => /^Downloading French translator… 50%$/.test(m))).toBe(true);
-    expect(cache.get('lines:vid:fr')).toEqual(lines);
+    expect(cache.get(cacheKey('vid', 'fr'))).toEqual(lines);
   });
 
   it('ASR track: Translator API before tlang', async () => {
@@ -246,7 +246,7 @@ describe('getLines pipeline + fallback chain', () => {
     await done;
     await new Promise((r) => setTimeout(r, 0));
     expect(updates.at(-1)!.map((l) => l.source)).toEqual(Array.from({ length: 150 }, (_, i) => `L${i}.`));
-    expect((cache.get('lines:vid:es') as Line[]).length).toBe(150);
+    expect((cache.get(cacheKey('vid', 'es')) as Line[]).length).toBe(150);
   });
 
   it('planChunks order: forward from fromTime, then the start', () => {

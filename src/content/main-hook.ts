@@ -6,6 +6,7 @@ import { BRIDGE_SOURCE, isBridgeMsg, type BridgeMsg } from '../shared/messages';
 import type { CaptionTrack, Json3, PlayerResponse } from '../shared/types';
 import { listAudioTracks, rewriteTimedtextUrl, timedtextVideoId } from './captions';
 import { getTranslatorGlobal, runTranslator } from './translate-local';
+import { acceptRewrite, getLanguageModelGlobal, makeNanoRewriter, runWarmUp, type RewriteFn, type RewriteRequest } from './text/nano';
 
 type AnyPlayer = HTMLElement & {
   getPlayerResponse?: () => PlayerResponse | null;
@@ -13,6 +14,9 @@ type AnyPlayer = HTMLElement & {
   setOption?: (mod: string, key: string, val: unknown) => void;
   loadModule?: (mod: string) => void;
   unloadModule?: (mod: string) => void;
+  getAvailableAudioTracks?: () => unknown[];
+  getAudioTrack?: () => unknown;
+  setAudioTrack?: (track: unknown) => unknown;
 };
 
 /** videoId → captured timedtext URLs (oldest first, ≤ 10). */
@@ -188,6 +192,100 @@ export function readPlayerResponse(videoId?: string | null): PlayerResponse | nu
   return matches(ipr) ? slim(ipr) : null;
 }
 
+// ---------------------------------------------------------------- official audio tracks (v1.1, F)
+// movie_player.getAvailableAudioTracks() / getAudioTrack() / setAudioTrack(track) — undocumented, used by
+// userscripts (e.g. Greasy Fork "YouTube default audio track"). Track objects are minified: the language lives
+// in a nested object with `id` like "fr.4" / "en-US.3" and a `name` ("French (dubbed-auto)"), found by key discovery.
+
+const AUDIO_ID_RE = /^([a-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?)\.\d+$/;
+
+/** Language base + display name of a player audio-track object (minified shape tolerated). */
+export function audioTrackInfo(t: unknown): { lang: string | null; name: string } {
+  const out = { lang: null as string | null, name: '' };
+  if (!t || typeof t !== 'object') return out;
+  const objs: Record<string, unknown>[] = [t as Record<string, unknown>];
+  for (const v of Object.values(t as Record<string, unknown>)) if (v && typeof v === 'object' && !Array.isArray(v)) objs.push(v as Record<string, unknown>);
+  for (const o of objs) {
+    for (const k of ['id', 'audioTrackId', 'languageCode', 'lang']) {
+      const v = o[k];
+      if (typeof v !== 'string') continue;
+      const m = AUDIO_ID_RE.exec(v) ?? (/^[a-z]{2,3}([-_][A-Za-z0-9]{2,8})?$/.test(v) ? [v, v] : null);
+      if (m && !out.lang) out.lang = (m[1] ?? '').toLowerCase().split(/[-_]/)[0] ?? null;
+    }
+    if (!out.name && typeof o.name === 'string') out.name = o.name;
+    if (!out.name && typeof o.displayName === 'string') out.name = o.displayName;
+  }
+  return out;
+}
+
+export interface AudioSwitchResult { switched: boolean; already?: boolean; name?: string; autoDubbed?: boolean; reason?: string }
+
+/** videoId → the track that played before we switched (restored on Dub off). */
+const prevAudio = new Map<string, unknown>();
+
+function currentVideoId(p: AnyPlayer | null): string | null {
+  try { return p?.getPlayerResponse?.()?.videoDetails?.videoId ?? null; } catch { return null; }
+}
+
+/** Switch the player to YouTube's `lang` audio track (official or auto-dub). Exported for tests. */
+export function switchAudioTrack(videoId: string, lang: string, doc: Document = document): AudioSwitchResult {
+  const p = doc.getElementById('movie_player') as AnyPlayer | null;
+  if (!p || typeof p.getAvailableAudioTracks !== 'function' || typeof p.setAudioTrack !== 'function') return { switched: false, reason: 'api' };
+  const vid = currentVideoId(p);
+  if (vid && videoId && vid !== videoId) return { switched: false, reason: 'video' };
+  let tracks: unknown[];
+  try { tracks = p.getAvailableAudioTracks() ?? []; } catch { return { switched: false, reason: 'api' }; }
+  if (!Array.isArray(tracks) || tracks.length < 2) return { switched: false, reason: 'none' };
+  // Names from the player response (adaptiveFormats audioTrack.displayName) when ids are hidden.
+  const byName = new Map<string, string>();
+  try {
+    for (const a of listAudioTracks(readPlayerResponse(videoId))) if (a.displayName) byName.set(a.displayName.toLowerCase(), a.languageCode.split(/[-_]/)[0]!.toLowerCase());
+  } catch { /* ignore */ }
+  const langOf = (t: unknown) => {
+    const i = audioTrackInfo(t);
+    return { ...i, lang: i.lang ?? byName.get(i.name.toLowerCase()) ?? null };
+  };
+  const autoDub = (name: string) => /auto[- ]?dub|dubbed[- ]auto|doublage automatique|doblaje automático|doublé automatiquement/i.test(name);
+  let cur: unknown = null;
+  try { cur = p.getAudioTrack?.() ?? null; } catch { cur = null; }
+  const ci = langOf(cur);
+  if (ci.lang === lang) return { switched: true, already: true, name: ci.name, autoDubbed: autoDub(ci.name) };
+  const target = tracks.find((t) => langOf(t).lang === lang);
+  if (!target) return { switched: false, reason: 'none' };
+  try {
+    const r = p.setAudioTrack(target);
+    if (r === false) return { switched: false, reason: 'refused' };
+  } catch {
+    return { switched: false, reason: 'error' };
+  }
+  try {
+    const now = p.getAudioTrack?.();
+    if (now !== undefined && now !== null) {
+      const ni = langOf(now);
+      if (ni.lang && ni.lang !== lang) return { switched: false, reason: 'verify' };
+    }
+  } catch { /* trust setAudioTrack */ }
+  if (!prevAudio.has(videoId)) prevAudio.set(videoId, cur);
+  const ti = langOf(target);
+  return { switched: true, name: ti.name, autoDubbed: autoDub(ti.name) };
+}
+
+/** Put back the track that played before switchAudioTrack (only on the same video). Exported for tests. */
+export function restoreAudioTrack(videoId: string, doc: Document = document): boolean {
+  if (!prevAudio.has(videoId)) return false;
+  const prev = prevAudio.get(videoId);
+  prevAudio.delete(videoId);
+  const p = doc.getElementById('movie_player') as AnyPlayer | null;
+  if (!p || !prev || typeof p.setAudioTrack !== 'function') return false;
+  const vid = currentVideoId(p);
+  if (vid && vid !== videoId) return false;
+  try { p.setAudioTrack(prev); return true; } catch { return false; }
+}
+
+// ---------------------------------------------------------------- Gemini Nano in the page world (v1.1, F)
+
+let mainRewriter: RewriteFn | null = null;
+
 // ---------------------------------------------------------------- AD_REQ server
 
 async function serve(reqId: string, op: string, args: Record<string, unknown>): Promise<unknown> {
@@ -208,6 +306,30 @@ async function serve(reqId: string, op: string, args: Record<string, unknown>): 
         (done, total) => post({ source: BRIDGE_SOURCE, type: 'AD_PROGRESS', reqId, done, total }),
       );
     }
+    case 'nano': {
+      const LM = getLanguageModelGlobal();
+      if (!LM) throw new Error('NETWORK');
+      const req = args as unknown as RewriteRequest;
+      if (typeof req.fr !== 'string') return null;
+      const out = await (mainRewriter ??= makeNanoRewriter(LM))({ fr: req.fr, source: typeof req.source === 'string' ? req.source : undefined, maxChars: Number(req.maxChars) || req.fr.length });
+      return acceptRewrite(req.fr, out);
+    }
+    case 'nanoWarmup': {
+      const LM = getLanguageModelGlobal();
+      return LM ? runWarmUp(LM) : false;
+    }
+    case 'translatorWarmup': {
+      // Same window as the click → same transient activation: start the en→target model download.
+      const T = getTranslatorGlobal();
+      if (!T) return false;
+      const tr = await T.create({ sourceLanguage: String(args.from ?? 'en'), targetLanguage: String(args.to ?? '') });
+      try { tr.destroy?.(); } catch { /* ignore */ }
+      return true;
+    }
+    case 'audioTrackSwitch':
+      return switchAudioTrack(String(args.videoId ?? ''), String(args.lang ?? ''));
+    case 'audioTrackRestore':
+      return restoreAudioTrack(String(args.videoId ?? ''));
     default:
       throw new Error('NETWORK');
   }

@@ -132,7 +132,7 @@ describe('speaker labels → gender', () => {
   it('cleanCueText strips labels and sound tags', () => {
     expect(cleanCueText('(homme) Bonjour !')).toEqual({ text: 'Bonjour !', gender: 'male', newSpeaker: true });
     expect(cleanCueText('(Femme) Salut')).toMatchObject({ text: 'Salut', gender: 'female' });
-    expect(cleanCueText('♪ la la ♪')).toMatchObject({ text: 'la la' });
+    expect(cleanCueText('♪ la la ♪')).toMatchObject({ text: '' }); // v1.1: lyrics are not dubbed
     expect(cleanCueText('(rires)').text).toBe('');
     expect(cleanCueText('JOHN: Hi there')).toMatchObject({ text: 'Hi there', newSpeaker: true });
     expect(cleanCueText('- ¿Qué tal?')).toMatchObject({ text: '¿Qué tal?', newSpeaker: true });

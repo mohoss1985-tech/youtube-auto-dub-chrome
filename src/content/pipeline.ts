@@ -5,10 +5,14 @@
 //   ASR track:   Translator API → tlang → OpenAI   (tlang of ASR fragments gives poor sentences)
 import { sendToSW } from '../shared/messages';
 import { LANG_INFO } from '../shared/settings';
-import { DubError, type CaptionTrack, type ErrorCode, type Lang, type Line } from '../shared/types';
+import { DubError, type CaptionTrack, type Cue, type ErrorCode, type Json3, type Lang, type Line } from '../shared/types';
 import { isAsrTrack, langBase, mergeSentences, parseJson3, pickTrack } from './captions';
 import { translateLocal } from './translate-local';
 import { getJson3, getPlayerResponse } from './yt';
+import { cleanSourceText } from './text/cleanup';
+import { speechFriendly } from './text/glossary';
+import { FrenchShortener, nanoRewrite, type RewriteFn } from './text/nano';
+import { estimateMs } from './sync/fit';
 
 export interface GetLinesOptions {
   /** Media time (s) to translate first (e.g. video.currentTime). Default 0. */
@@ -19,6 +23,12 @@ export interface GetLinesOptions {
    * translated lines after each further chunk (last call = complete). Without it, getLines waits for all.
    */
   onUpdate?: (lines: Line[]) => void;
+  /** v1.1 (F): French only — rewrite over-long lines shorter with Gemini Nano in the background (needs `onUpdate`). */
+  smartFrench?: boolean;
+  /** v1.1 (F): stop background work (Nano pass) once this returns false (session stopped). */
+  isAlive?: () => boolean;
+  /** Tests: replace the Nano rewriter. */
+  rewrite?: RewriteFn;
 }
 
 export const FIRST_CHUNK = 40;
@@ -33,7 +43,36 @@ export function _resetPipeline(): void {
   tlangTried.clear();
 }
 
-export const cacheKey = (videoId: string, lang: Lang) => `lines:${videoId}:${lang}`;
+/** `:2` = v1.1 text (cleanup, glossary, speaker flags); v1.0 entries are ignored. */
+export const cacheKey = (videoId: string, lang: Lang) => `lines:${videoId}:${lang}:2`;
+
+/** Clean cues (fillers, stutters, shouting, leftover tags); a dropped cue's speaker change moves to the next cue. */
+export function cleanCues(cues: Cue[], lang: string): Cue[] {
+  const out: Cue[] = [];
+  let pendingNew = false;
+  for (const c of cues) {
+    const text = cleanSourceText(c.text, lang);
+    if (!text) { pendingNew ||= !!c.newSpeaker; continue; }
+    const n: Cue = { ...c, text };
+    if (pendingNew) n.newSpeaker = true;
+    pendingNew = false;
+    out.push(n);
+  }
+  return out;
+}
+
+/** json3 → cleaned, merged lines. */
+export function linesFromJson3(json: Json3, lang: string): Line[] {
+  return mergeSentences(cleanCues(parseJson3(json), lang), lang);
+}
+
+/** Target-language TTS polish (money, NBA words, acronyms). Line count, ids and flags kept. */
+export function polish(lines: Line[], lang: Lang): Line[] {
+  return lines.map((l) => {
+    const text = speechFriendly(l.text, lang);
+    return text === l.text ? l : { ...l, text };
+  });
+}
 
 function validLines(v: unknown): v is Line[] {
   return Array.isArray(v) && v.length > 0 && v.every((l) => l && typeof l.text === 'string' && typeof l.start === 'number' && typeof l.id === 'string');
@@ -61,14 +100,14 @@ type Tx = (texts: string[]) => Promise<string[] | null>;
 interface TxResult { lines: Line[]; complete: boolean }
 
 /** Translate `src` with `tx` in chunks. null if the first chunk fails (caller tries the next translator). */
-async function runChunks(src: Line[], tx: Tx, chunkSize: number, opts: GetLinesOptions | undefined, onDone: (lines: Line[]) => void): Promise<TxResult | null> {
+async function runChunks(src: Line[], tx: Tx, chunkSize: number, opts: GetLinesOptions | undefined, onDone: (lines: Line[]) => void, polishText: (t: string) => string = (t) => t): Promise<TxResult | null> {
   const chunks = planChunks(src, opts?.fromTime ?? 0, FIRST_CHUNK, chunkSize);
   const done = new Map<number, Line>();
   const doChunk = async ([a, b]: [number, number]): Promise<boolean> => {
     const part = src.slice(a, b);
     const res = await tx(part.map((l) => l.text));
     if (!res || res.length !== part.length) return false;
-    part.forEach((l, i) => done.set(a + i, { ...l, text: (res[i] ?? '').trim(), source: l.text }));
+    part.forEach((l, i) => done.set(a + i, { ...l, text: polishText((res[i] ?? '').trim()), source: l.text }));
     return true;
   };
   const collect = (): Line[] => [...done.keys()].sort((x, y) => x - y).map((i) => done.get(i)!).filter((l) => l.text);
@@ -92,8 +131,33 @@ async function runChunks(src: Line[], tx: Tx, chunkSize: number, opts: GetLinesO
   return { lines: collect(), complete: false };
 }
 
-/** Full pipeline with SW cache `lines:<videoId>:<lang>`. Throws DubError NO_CAPTIONS | NO_TRANSLATION | RATE_LIMITED. `onProgress` gets user-facing status text (e.g. "Downloading French translator…"). */
+/**
+ * Full pipeline with SW cache `lines:<videoId>:<lang>:2`. Throws DubError NO_CAPTIONS | NO_TRANSLATION | RATE_LIMITED.
+ * `onProgress` gets user-facing status text (e.g. "Downloading French translator…").
+ * v1.1: with `smartFrench` (fr + onUpdate), over-long lines are shortened by Gemini Nano in the background and
+ * delivered through `onUpdate` (never blocks; the cache keeps the unshortened lines).
+ */
 export async function getLines(videoId: string, lang: Lang, onProgress?: (message: string) => void, opts?: GetLinesOptions): Promise<Line[]> {
+  const onUpdate = opts?.onUpdate;
+  if (!opts?.smartFrench || lang !== 'fr' || !onUpdate) return getLinesRaw(videoId, lang, onProgress, opts);
+  let latest: Line[] | null = null;
+  const sh = new FrenchShortener({
+    rewrite: opts.rewrite ?? nanoRewrite,
+    estimateMs: (t) => estimateMs(t, 'fr'),
+    isAlive: opts.isAlive,
+    onChange: () => { if (latest) onUpdate(sh.apply(latest)); },
+  });
+  const from = opts.fromTime ?? 0;
+  const lines = await getLinesRaw(videoId, lang, onProgress, {
+    ...opts,
+    onUpdate: (ls) => { latest = ls; sh.feed(ls, from); onUpdate(sh.apply(ls)); },
+  });
+  if (!latest || (latest as Line[]).length < lines.length) latest = lines;
+  sh.feed(lines, from);
+  return sh.apply(lines);
+}
+
+async function getLinesRaw(videoId: string, lang: Lang, onProgress?: (message: string) => void, opts?: GetLinesOptions): Promise<Line[]> {
   const say = (m: string) => { try { onProgress?.(m); } catch { /* ignore */ } };
   const langName = LANG_INFO[lang]?.name ?? lang;
 
@@ -109,14 +173,14 @@ export async function getLines(videoId: string, lang: Lang, onProgress?: (messag
 
   const loadOriginal = async (): Promise<Line[]> => {
     const json = await getJson3(track, videoId);
-    const lines = json ? mergeSentences(parseJson3(json), track.languageCode) : [];
+    const lines = json ? linesFromJson3(json, track.languageCode) : [];
     if (!lines.length) throw new DubError('NO_CAPTIONS', 'YouTube did not return the captions for this video. Try reloading the page.');
     return lines;
   };
 
   // Track already in the target language → no translation.
   if (langBase(track.languageCode) === lang) {
-    const lines = await loadOriginal();
+    const lines = polish(await loadOriginal(), lang);
     await cachePut(videoId, lang, lines);
     return lines;
   }
@@ -130,7 +194,7 @@ export async function getLines(videoId: string, lang: Lang, onProgress?: (messag
     say(`Getting ${langName} captions from YouTube…`);
     try {
       const json = await getJson3(track, videoId, lang);
-      const lines = json ? mergeSentences(parseJson3(json), lang) : [];
+      const lines = json ? polish(linesFromJson3(json, lang), lang) : [];
       return lines.length ? lines : null;
     } catch {
       return null; // RATE_LIMITED (429) or bridge failure → our own translation
@@ -156,7 +220,8 @@ export async function getLines(videoId: string, lang: Lang, onProgress?: (messag
   const local: Tx = (texts) =>
     translateLocal(texts, track.languageCode, lang, (p) => say(`Downloading ${langName} translator… ${Math.round(p * 100)}%`));
   say(`Translating to ${langName}…`);
-  const lr = await runChunks(src, local, LOCAL_CHUNK, opts, onDone);
+  const fx = (t: string) => speechFriendly(t, lang);
+  const lr = await runChunks(src, local, LOCAL_CHUNK, opts, onDone, fx);
   if (lr) return use(lr);
 
   if (asr) {
@@ -173,7 +238,7 @@ export async function getLines(videoId: string, lang: Lang, onProgress?: (messag
     return null;
   };
   say(`Translating to ${langName} with OpenAI…`);
-  const sr = await runChunks(src, sw, SW_CHUNK, opts, onDone);
+  const sr = await runChunks(src, sw, SW_CHUNK, opts, onDone, fx);
   if (sr) return use(sr);
 
   const err = swErr as { error: ErrorCode; message?: string } | null;
