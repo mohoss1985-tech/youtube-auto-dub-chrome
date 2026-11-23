@@ -14,7 +14,7 @@
 
 ## Nouveautés de la v1.1 · Meilleur français, voix plus fluide
 
-- **Voix neuronales gratuites :** des voix françaises naturelles (une femme et un homme) qui tournent sur votre ordinateur. Choisissez **Neural voices** dans Engine. Téléchargées une fois (~60 Mo chacune), puis hors ligne.
+- **Voix neuronales gratuites :** des voix françaises naturelles (une femme et un homme) qui tournent sur votre ordinateur. Le français les utilise par défaut (Siwis, voix de femme ; Tom quand un homme parle). Téléchargées une fois (~60 Mo chacune), puis hors ligne.
 - **Audio français officiel d'abord :** beaucoup de vidéos MrBeast ont de vrais comédiens français sur YouTube. AutoDub bascule dessus automatiquement.
 - **Plus fluide :** vitesse régulière, plus de silence suivi d'un débit rapide ; la voix ne passe d'homme à femme que si la personne qui parle change vraiment.
 - **Français plus propre :** plus de « euh », de [Musique] ni de paroles de chansons lues ; nombres et mots de la NBA dits à la française. L'option **Smart French** utilise l'IA intégrée gratuite de Chrome pour raccourcir les phrases trop longues.

@@ -49,7 +49,7 @@ function setup(lines: Line[], over: Partial<DubSessionDeps> = {}) {
     saveVoiceCal: (c) => { saved.push(c); },
     ...over,
   };
-  const s = new DubSession({ videoId: 'v', settings: { ...DEFAULT_SETTINGS }, video: video as unknown as HTMLVideoElement, player: document.createElement('div'), deps });
+  const s = new DubSession({ videoId: 'v', settings: { ...DEFAULT_SETTINGS, preferNeural: false }, video: video as unknown as HTMLVideoElement, player: document.createElement('div'), deps });
   return { s, video, engines, saved, pitch: () => pitch! };
 }
 async function play(video: FakeVideo, to: number) {
@@ -118,6 +118,16 @@ describe('DubSession v1.1 pacing', () => {
     expect(v[0]).toBe('Amelie'); // nothing heard yet → best voice
     expect(v.slice(1, 6)).toEqual(['Thomas', 'Thomas', 'Thomas', 'Thomas', 'Thomas']); // l2's noise did not flip l3
     expect(v[6]).toBe('Amelie'); // marker on l5 + evidence → l6 female (within 1 line)
+    s.stop();
+  });
+});
+
+describe('v1.1.1 default French engine', () => {
+  it('French + preferNeural uses the neural engine even when engine is webspeech', async () => {
+    const { s, engines } = setup([{ id: 'a', start: 1, end: 3, text: 'Bonjour' }]);
+    (s as unknown as { settings: typeof DEFAULT_SETTINGS }).settings = { ...DEFAULT_SETTINGS, targetLang: 'fr', engine: 'webspeech', preferNeural: true };
+    await s.start();
+    expect(engines[0].id).toBe('neural');
     s.stop();
   });
 });

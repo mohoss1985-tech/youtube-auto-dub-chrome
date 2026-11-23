@@ -64,7 +64,7 @@ function setup(over: Partial<DubSessionDeps> = {}, settings = {}) {
     ...over,
   };
   const s = new DubSession({
-    videoId: 'vid1', settings: { ...DEFAULT_SETTINGS, ...settings },
+    videoId: 'vid1', settings: { ...DEFAULT_SETTINGS, preferNeural: false, ...settings },
     video: video as unknown as HTMLVideoElement, player, deps,
     onToast: (m) => toasts.push(m),
   });

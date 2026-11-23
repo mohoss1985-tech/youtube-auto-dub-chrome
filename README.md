@@ -14,7 +14,7 @@
 
 ## New in v1.1 · Better French, smoother voice
 
-- **Neural voices, free:** natural French voices (a woman and a man) that run on your computer. Pick **Neural voices** in Engine. They download once (~60 MB each), then work offline.
+- **Neural voices, free:** natural French voices (a woman and a man) that run on your computer. French uses them by default (Siwis, a woman's voice; Tom when a man speaks). They download once (~60 MB each), then work offline.
 - **Official French audio first:** many MrBeast videos have real French voice actors on YouTube. AutoDub switches to them automatically.
 - **Smoother:** steady speed, no more silence then fast talking; the voice changes between a man and a woman only when the speaker really changes.
 - **Cleaner French:** no more "um", [Music] or song lyrics read out; numbers and NBA words said the French way. Optional **Smart French** uses Chrome's free built-in AI to shorten lines that are too long.

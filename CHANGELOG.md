@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.1 · 2026-11-23
+
+- French now uses the free neural voice **Siwis** by default (no need to open Engine). The male neural voice Tom is used when a man speaks. Until the voice is downloaded the first time, the Mac voice speaks.
+
 ## v1.1.0 · 2026-11-23 · Better French, smoother voice
 
 - **Neural voices (free, on your computer):** natural Piper voices, French female (Siwis) and male (Tom), plus Spanish, English, Arabic and Turkish. Downloaded once (~60 MB per voice), then offline. Recommended for French.

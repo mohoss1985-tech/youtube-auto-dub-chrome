@@ -222,7 +222,9 @@ export class DubSession {
 
     // Engine + voices.
     try {
-      this.setEngine(this.settings.engine);
+      // v1.1.1: French uses the free neural voice (Siwis, owner's pick) by default, even if the popup was never opened.
+      const eng = this.settings.engine === 'webspeech' && this.settings.preferNeural && this.settings.targetLang === 'fr' ? 'neural' : this.settings.engine;
+      this.setEngine(eng);
     } catch (e) {
       if (this.settings.engine === 'webspeech') return this.failFrom(e, 'ENGINE_ERROR');
       this.toast('Voice service unavailable — using the free browser voice', 'warn');
