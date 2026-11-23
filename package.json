@@ -16,6 +16,7 @@
     "@types/chrome": "^0.3.7",
     "@types/node": "^26.6.6",
     "esbuild": "^0.28.2",
+    "fake-indexeddb": "^6.2.8",
     "jsdom": "^31.0.1",
     "typescript": "^7.0.2",
     "vitest": "^5.1.1"

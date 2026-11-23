@@ -102,7 +102,9 @@ export type BridgeOp = 'playerResponse' | 'json3' | 'audioTracks' | 'translate';
 export type BridgeMsg =
   | { source: typeof BRIDGE_SOURCE; type: 'AD_TIMEDTEXT_URL'; url: string }
   | { source: typeof BRIDGE_SOURCE; type: 'AD_REQ'; reqId: string; op: BridgeOp; args?: unknown }
-  | { source: typeof BRIDGE_SOURCE; type: 'AD_RES'; reqId: string; ok: boolean; data?: unknown; error?: string };
+  | { source: typeof BRIDGE_SOURCE; type: 'AD_RES'; reqId: string; ok: boolean; data?: unknown; error?: string }
+  /** Progress for a long op (translate): `loaded` = model download 0..1, or `done/total` lines translated. */
+  | { source: typeof BRIDGE_SOURCE; type: 'AD_PROGRESS'; reqId: string; loaded?: number; done?: number; total?: number };
 
 export function isBridgeMsg(x: unknown): x is BridgeMsg {
   return !!x && typeof x === 'object' && (x as { source?: unknown }).source === BRIDGE_SOURCE && typeof (x as { type?: unknown }).type === 'string';

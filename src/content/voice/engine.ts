@@ -1,5 +1,7 @@
 // Voice engine contract (§4). Owner: B.
 import type { EngineId, Lang, Line } from '../../shared/types';
+import { WebSpeechEngine } from './webspeech';
+import { AudioEngine, type AudioEngineOptions } from './audio';
 
 /** A line ready to play. API engines carry a Blob URL and decoded duration; WebSpeech carries text only. */
 export interface Prepared {
@@ -34,10 +36,11 @@ export interface TtsEngine {
   prepare(line: Line, lang: Lang, voice?: string): Promise<Prepared>;
   play(p: Prepared, rate: number, volume: number): PlayHandle;
   stopAll(): void;
+  /** Release resources (Blob URLs) at session end. Optional. */
+  dispose?(): void;
 }
 
-/** Factory: 'webspeech' → WebSpeechEngine, 'openai' | 'elevenlabs' → AudioEngine. */
-export function createEngine(id: EngineId): TtsEngine {
-  void id;
-  throw new Error('TODO B');
+/** Factory: 'webspeech' → WebSpeechEngine, 'openai' | 'elevenlabs' → AudioEngine (opts: onFallback, speed, send). */
+export function createEngine(id: EngineId, opts?: AudioEngineOptions): TtsEngine {
+  return id === 'webspeech' ? new WebSpeechEngine() : new AudioEngine(id, opts);
 }

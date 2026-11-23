@@ -5,8 +5,8 @@ export type EngineId = 'webspeech' | 'openai' | 'elevenlabs';
 export type Gender = 'male' | 'female' | 'unknown';
 
 export interface CaptionTrack { baseUrl: string; languageCode: string; kind?: string; vssId: string; name?: string }
-/** Times in seconds. */
-export interface Cue { start: number; end: number; text: string }
+/** Times in seconds. `gender` = caption speaker-label hint ([Man], (femme)…); `newSpeaker` = a `>>` / label speaker change starts here. */
+export interface Cue { start: number; end: number; text: string; gender?: Gender; newSpeaker?: boolean }
 /** One merged sentence. Times in seconds. `source` = original-language text when `text` is translated. */
 export interface Line { id: string; start: number; end: number; text: string; source?: string; gender?: Gender }
 /** Output of sync/fit: how to speak one line. `startAt` in seconds (media time), `maxMs` hard cut. */

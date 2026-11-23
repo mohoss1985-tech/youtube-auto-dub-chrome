@@ -1,0 +1,39 @@
+# Wave 1 — A: Captions + translation pipeline (2026-11-23)
+
+## Status
+- `npx vitest run tests/unit/a-`: 4 files, 49 tests pass (smoke, captions, hook, translate/pipeline).
+- `npx tsc --noEmit`: no errors in A's files. The only errors are in `src/popup/popup.ts` (D: `targetLang: string` is not assignable to `Lang`).
+- `node build.mjs --outdir build-a` builds cleanly (folder removed afterwards). `main-hook.js` contains no `chrome.*` references.
+
+## What was built
+| File | What it does |
+|---|---|
+| `src/content/main-hook.ts` | MAIN world, `document_start`. Hooks `fetch` and `XHR.open` and records `/api/timedtext` URLs per videoId (at most 10 each), posting `AD_TIMEDTEXT_URL` for each. Serves `AD_REQ` ops: `playerResponse` (slimmed: videoDetails, captions, audioTrack-only adaptiveFormats; `movie_player` first, else `ytInitialPlayerResponse`, only if videoId matches), `audioTracks`, `json3`, `translate` (Translator API in the page world, sends `AD_PROGRESS`). The json3 order follows §3.4: captured URLs (same language first), then `performance` entries, then `baseUrl` (skipped when it has `exp=xpe`), then turning CC on (`loadModule` + `setOption`, or clicking the CC button). It waits ≤ 3 s for a new capture, restores the previous track or unloads captions, and hides `.ytp-caption-window-container` while it holds CC. Our own fetches use the native fetch, so they are never captured. Empty body, non-OK status or non-JSON response moves on to the next step; 429 gives `RATE_LIMITED`. |
+| `src/content/yt.ts` | `getVideoId`/`isWatchPage` (https `www.youtube.com/watch?v=` only; excludes Shorts, embed and m.), `getPlayer`, `getVideo`, `bridgeRequest(op,args,{timeoutMs,onProgress})` (idle timeout reset by AD_PROGRESS), `getPlayerResponse(videoId?)` (retries about 2.4 s after SPA navigation), `getJson3`, **`getAudioTracks(videoId?)`** (new). |
+| `src/content/captions.ts` | `pickTrack` (human in target, then human, then ASR in target, then ASR; `vssId` `a.` counts as ASR). `parseJson3` drops header, no-segs and `\n` events, caps each end at the next start, and strips `[..]`, sound tags, ♪, `>>`, `NAME:` and dialogue dashes. `mergeSentences` ends lines on `. ! ? … 。 ؟ ؛` (not after "Mr."), splits sentences inside a cue (times shared by character count), and also breaks on a gap > 1.2 s, 180 characters or 12 s. Unpunctuated ASR (auto-detected: < 15 % of cues have end marks) breaks on a gap > 0.7 s or 120 characters. A speaker change or gender change always breaks. Oversized cues are split on `, ; :` and then on spaces. Also: `listAudioTracks` (from adaptiveFormats `audioTrack`; [] when only one track) and the helpers `rewriteTimedtextUrl`, `timedtextVideoId`, `langBase`, `isAsrTrack`, `genderFromLabel`, `cleanCueText`, `endsSentence`, `isPunctuated`, `splitLongText`. |
+| Speaker labels → `Line.gender` | Labels such as `[Man]`, `[Woman narrator]`, `(homme)`, `(Femme)`, `mujer`, `erkek`, `kadın`, `رجل`, `امرأة` (plus boy, girl, mother, father and so on in all 5 languages) set `Cue.gender` (new optional field). The gender carries to following cues until the next speaker change (`>>`, `-`, `NAME:` or another label); it is omitted when unknown. |
+| `src/content/translate-local.ts` | `translateLocal(texts, from, to, onProgress?, onTranslated?)`. Uses `globalThis.Translator` when the isolated world has it, otherwise bridge op `translate`. `runTranslator` handles `availability` (unavailable → null; `downloadable`/`downloading` → progress 0…1 through `monitor` `downloadprogress`), a refused `create()` → null, and the same language (no-op). Source language codes are reduced to their base (zh keeps `zh-Hant`). |
+| `src/content/pipeline.ts` | `getLines(videoId, lang, onProgress?, opts?)`: SW cache, then player response, then pickTrack, then json3, then merge, then translate, then cache. **Chain:** human track: tlang (one try per video+lang; 429 or empty falls through) → Translator API → OpenAI via SW. ASR track: Translator API → tlang → OpenAI. The original track is always merged before translating, and `source` keeps the original text. Progress texts: "Loading captions…", "Getting French captions from YouTube…", "Downloading French translator… 42%", "Translating to French…", "…with OpenAI…". Errors: `NO_CAPTIONS`, `RATE_LIMITED` (OpenAI 429), `NO_TRANSLATION` (message says to add an OpenAI key or update Chrome). |
+| `src/background/translate.ts` | `translateBatch` sends chat completions with JSON array input, `response_format: json_object` and `{"translations":[…]}` output. It retries once on a line-count mismatch, then gives `NO_TRANSLATION`. 401/403 → `NO_KEY` (the response body is never echoed), 429 → `RATE_LIMITED`, abort → `TIMEOUT`. The key is only sent in the Authorization header and is never logged. Also exports `buildTranslateBody` and `parseTranslations`. |
+| `src/background/index.ts` | Unchanged; Wave 0's router already chunks by 40 and checks the line count. |
+| Shared (additive) | `Cue.gender?`, `Cue.newSpeaker?`; bridge message `AD_PROGRESS {reqId, loaded?, done?, total?}`. |
+| Tests / fixtures | `tests/fixtures/json3-human-en.json`, `json3-asr-en.json`; `tests/unit/a-captions.test.ts`, `a-hook.test.ts`, `a-translate.test.ts`. |
+
+## Public API additions (all optional / new names)
+- `getLines(videoId, lang, onProgress?, opts?: { fromTime?: number; onUpdate?: (lines) => void })`. **Progressive mode:** when `onUpdate` is given and a slow translator runs (on-device or OpenAI), the call resolves after the first 40 lines from `fromTime`. It then calls `onUpdate(allTranslatedSoFar)` after each chunk; the last call is complete, and only that is cached. Without `opts`, it waits for all lines, as before.
+- `yt.getAudioTracks(videoId?)`, `yt.bridgeRequest`, `pipeline.planChunks`, `pipeline.cacheKey`, `pipeline.GetLinesOptions`.
+- `translateLocal(..., onTranslated?)`.
+
+## Open issues
+1. **Translator API in the ISOLATED world: not verified.** The docs only say "top-level windows and same-origin iframes, not workers". The code tries the isolated global first and falls back to the MAIN bridge. Needs an e2e check in real Chrome.
+2. **User activation:** `Translator.create()` for a `downloadable` model needs transient activation. The Dub click gives about 5 s, but the json3 fetch comes first, so activation may expire on the first-ever download. Then `translateLocal` returns null, and the chain falls to OpenAI or `NO_TRANSLATION`. A fix (needs C): call a warm-up (`Translator.availability` + `create` with the expected pair) right in the click handler. A could export `warmUpTranslator(from?, to)` on request.
+3. Retargeting a captured URL to another `lang` assumes the pot is bound to the video, not the language (research/01). Unverified; if it fails, the CC-toggle step still covers it.
+4. The json3 bridge timeout is 20 s (the worst case is several fetches plus the 3 s capture wait).
+5. Time to first line: for long videos without tlang, use progressive mode (see Requests), or the first line will take more than 5 s.
+6. `tlangTried` is per page session (module memory), not persisted.
+
+## Requests
+- **C (`session.ts`):** call `getLines(videoId, lang, onProgress, { fromTime: video.currentTime, onUpdate: (lines) => scheduler.setLines(lines) })` so long untranslated videos start in < 5 s. In the Dub click handler, before any `await`, consider a Translator warm-up (open issue 2).
+- **C/D:** `getAudioTracks()` now exists in `yt.ts` for the "YouTube has an official <lang> track" banner (§3.9). Each entry has `isAutoDubbed` when YouTube's own auto-dub is detected.
+- **D (`popup.ts`):** fix the tsc error at line 384 (`targetLang: string` should be `Lang`). It breaks `npx tsc --noEmit` for everyone.
+- **B:** none. `Line.gender` is now set from caption labels when present; `pickVoiceFor` should prefer it over pitch (C's override rule already says so).
