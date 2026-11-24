@@ -19,7 +19,7 @@
 
 ## New in v1.1 · Better French, smoother voice
 
-- **Neural voices, free:** natural French voices (a woman and a man) that run on your computer. French uses them by default (Siwis, a woman's voice; Tom when a man speaks). They download once (~60 MB each), then work offline.
+- **Neural voices, free:** natural French voices (a woman and a man) that run on your computer. French uses them by default (Siwis, a woman's voice; Pierre when a man speaks). They download once (~60 MB each), then work offline.
 - **Official French audio first:** many MrBeast videos have real French voice actors on YouTube. AutoDub switches to them automatically.
 - **Smoother:** steady speed, no more silence then fast talking; the voice changes between a man and a woman only when the speaker really changes.
 - **Cleaner French:** no more "um", [Music] or song lyrics read out; numbers and NBA words said the French way. Optional **Smart French** uses Chrome's free built-in AI to shorten lines that are too long.
@@ -88,7 +88,7 @@ No account, no server, no analytics. Settings, 👍 / 👎 feedback and keys sta
 - Not for Shorts, the YouTube Kids site, phones or TV apps (yet).
 - **Man or woman is a best guess.** Cartoons, songs and children's voices (high-pitched → female voice) can fool it.
 - On startup Chrome may show "Disable developer mode extensions". Click **Keep** (or ×): that's normal for extensions installed this way.
-- **Neural voice licences:** the voice models are downloaded from the Piper project (rhasspy/piper-voices) by your browser, not shipped here. Some are for non-commercial use only (the French male voice Tom is AGPL-3.0; the English and Turkish voices are CC BY-NC-SA). Fine for personal use.
+- **Neural voice licences:** the voice models are downloaded from the Piper project (rhasspy/piper-voices) by your browser, not shipped here. Some are for non-commercial use only (the default French male voice Pierre is CC BY-SA 4.0, the alternate Tom is AGPL-3.0; the English and Turkish voices are CC BY-NC-SA). Fine for personal use.
 - Not affiliated with YouTube or Google. "AutoDub" is the project's working name. Another, unrelated Chrome extension also uses this name.
 
 ## Update
@@ -102,7 +102,7 @@ TypeScript, Manifest V3, esbuild, Vitest, Playwright. No runtime dependencies, n
 | Command | What |
 |---|---|
 | `npm install && npm run build` | build the extension to `dist/` |
-| `npm test` | 356 unit tests |
+| `npm test` | 376 unit tests |
 | `npm run typecheck` | TypeScript |
 | `npx playwright test` | popup screenshots + smoke test |
 

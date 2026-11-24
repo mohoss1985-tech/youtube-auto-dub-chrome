@@ -61,10 +61,10 @@ describe('popup neural voices', () => {
     await initPopup(root, { backend: be });
     await settle();
     const btn = root.querySelector<HTMLButtonElement>('[data-action="neural-download"]');
-    expect(btn?.textContent).toContain('127 MB');
+    expect(btn?.textContent).toContain('140 MB'); // v1.2.2 (M): Siwis 63 + upmc (Pierre) 77
     btn!.click();
     await settle();
-    expect(calls).toContainEqual(['fr_FR-siwis-medium', 'fr_FR-tom-medium']);
+    expect(calls).toContainEqual(['fr_FR-siwis-medium', 'fr_FR-upmc-medium']);
     expect(root.querySelector('[data-neural] .progress')).not.toBeNull();
   });
 

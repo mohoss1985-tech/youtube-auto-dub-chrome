@@ -1,0 +1,43 @@
+{
+  "voice": "fr_FR-siwis-medium",
+  "expr": 0,
+  "sr": 22050,
+  "lines": [
+    {
+      "line": "neutral",
+      "ms": 3231,
+      "rtf": 0.053,
+      "postMs": null
+    },
+    {
+      "line": "excited",
+      "ms": 2484,
+      "rtf": 0.055,
+      "postMs": null
+    },
+    {
+      "line": "question",
+      "ms": 2131,
+      "rtf": 0.063,
+      "postMs": null
+    },
+    {
+      "line": "long",
+      "ms": 6404,
+      "rtf": 0.052,
+      "postMs": null
+    },
+    {
+      "line": "shout",
+      "ms": 2994,
+      "rtf": 0.055,
+      "postMs": null
+    },
+    {
+      "line": "soft-end",
+      "ms": 3138,
+      "rtf": 0.054,
+      "postMs": null
+    }
+  ]
+}

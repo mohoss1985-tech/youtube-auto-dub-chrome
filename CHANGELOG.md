@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.2 · 2026-11-24 · Clearer male French voice
+
+- **New default male French voice: Pierre** (UPMC, CC BY-SA 4.0). Tom was measured 3× choppier (2.3 speech breaks per second vs 0.7) and 2.5× noisier. Tom stays selectable. If Tom was saved as your voice, the update switches to Pierre once; Pierre downloads automatically (Mac voice fills in meanwhile).
+- **No more cut endings:** every line now ends with a 25 ms fade and a 60 ms margin (lines used to stop while still sounding).
+- **Smoother emotion on male voices:** pitch tracking tuned for low voices (60–250 Hz), octave-error guard, gap-free pitch shifting, gentler intonation for men.
+- Before/after samples in `research/samples/v122/`. 376 unit tests.
+
 ## v1.2.1 · 2026-11-24 · Works even when YouTube refuses to translate
 
 - **Fix:** "No free English → French translator is available on this device". YouTube now often answers *429 Too many requests* to subtitle translation (even its own Auto-translate), and Chrome's built-in translator is missing on some computers (e.g. managed by a company).

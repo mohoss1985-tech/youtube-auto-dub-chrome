@@ -19,15 +19,15 @@ describe('neural catalog', () => {
     expect(() => modelPath('bad')).toThrow();
   });
   it('has a male + female recommended French pair', () => {
-    expect(recommendedModels('fr')).toEqual(['fr_FR-siwis-medium', 'fr_FR-tom-medium']);
+    expect(recommendedModels('fr')).toEqual(['fr_FR-siwis-medium', 'fr_FR-upmc-medium']);
     expect(defaultNeuralVoice('fr', 'female')?.name).toBe('Siwis');
-    expect(defaultNeuralVoice('fr', 'male')?.name).toBe('Tom');
+    expect(defaultNeuralVoice('fr', 'male')?.name).toBe('Pierre'); // v1.2.2 (M)
     expect(neuralVoice('fr_FR-upmc-medium#pierre')?.speaker).toBe('pierre');
     for (const v of NEURAL_VOICES) expect(() => modelPath(v.model)).not.toThrow();
   });
   it('lists neural VoiceInfo with downloaded voices first', () => {
     const list = neuralVoiceInfos('fr', ['fr_FR-upmc-medium']);
-    expect(list[0].name).toBe('Jessica');
+    expect(list[0].name).toBe('Pierre'); // v1.2.2 (M): Pierre ranks above Jessica
     expect(list.every((v) => v.engine === 'neural')).toBe(true);
     expect(neuralVoiceInfos('fr').map((v) => v.gender)).toContain('male');
   });
@@ -135,9 +135,12 @@ describe('NeuralEngine', () => {
     expect(send).toHaveBeenCalledTimes(MAX_ERRORS);
   });
 
-  it('listVoices(lang, "neural") reads downloaded models from storage', async () => {
+  it('listVoices(lang, "neural"): recommended voices first even if only Tom is downloaded (v1.2.2), downloaded Tom above other alternates', async () => {
     installChromeMock({ neuralReady: ['fr_FR-tom-medium'] });
     const list = await listVoices('fr', 'neural');
-    expect(list[0].id).toBe('fr_FR-tom-medium');
+    expect(list.slice(0, 2).map((v) => v.id).sort()).toEqual(['fr_FR-siwis-medium', 'fr_FR-upmc-medium#pierre']);
+    expect(list[2].id).toBe('fr_FR-tom-medium');
+    const male = list.find((v) => v.gender === 'male');
+    expect(male?.id).toBe('fr_FR-upmc-medium#pierre');
   });
 });

@@ -1,0 +1,1335 @@
+{
+  "text": "Aujourd'hui, on va construire une maison au milieu de la forêt. Est-ce que tu veux vraiment garder tout cet argent ?",
+  "all": [
+    {
+      "speaker": "14",
+      "meanHz": 205,
+      "hnrDb": 13.92,
+      "flatness": 0.0052,
+      "clicks": 0,
+      "ms": 8404
+    },
+    {
+      "speaker": "27",
+      "meanHz": 205,
+      "hnrDb": 14.79,
+      "flatness": 0.041,
+      "clicks": 0,
+      "ms": 8011
+    },
+    {
+      "speaker": "28",
+      "meanHz": 183,
+      "hnrDb": 13.56,
+      "flatness": 0.0028,
+      "clicks": 0,
+      "ms": 6961
+    },
+    {
+      "speaker": "30",
+      "meanHz": 201,
+      "hnrDb": 14.26,
+      "flatness": 0.0049,
+      "clicks": 0,
+      "ms": 9623
+    },
+    {
+      "speaker": "52",
+      "meanHz": 209,
+      "hnrDb": 11.16,
+      "flatness": 0.0134,
+      "clicks": 0,
+      "ms": 5534
+    },
+    {
+      "speaker": "62",
+      "meanHz": 171,
+      "hnrDb": 17.43,
+      "flatness": 0.0643,
+      "clicks": 0,
+      "ms": 7140
+    },
+    {
+      "speaker": "66",
+      "meanHz": 104,
+      "hnrDb": 10.53,
+      "flatness": 0.0022,
+      "clicks": 0,
+      "ms": 6624
+    },
+    {
+      "speaker": "94",
+      "meanHz": 111,
+      "hnrDb": 9.92,
+      "flatness": 0.0033,
+      "clicks": 0,
+      "ms": 7476
+    },
+    {
+      "speaker": "103",
+      "meanHz": 219,
+      "hnrDb": 14.26,
+      "flatness": 0.0035,
+      "clicks": 0,
+      "ms": 6899
+    },
+    {
+      "speaker": "112",
+      "meanHz": 189,
+      "hnrDb": 14.03,
+      "flatness": 0.0029,
+      "clicks": 0,
+      "ms": 7651
+    },
+    {
+      "speaker": "115",
+      "meanHz": 201,
+      "hnrDb": 13.3,
+      "flatness": 0.0054,
+      "clicks": 0,
+      "ms": 8161
+    },
+    {
+      "speaker": "123",
+      "meanHz": 173,
+      "hnrDb": 11.7,
+      "flatness": 0.0034,
+      "clicks": 0,
+      "ms": 5698
+    },
+    {
+      "speaker": "125",
+      "meanHz": 204,
+      "hnrDb": 11.46,
+      "flatness": 0.0174,
+      "clicks": 0,
+      "ms": 5807
+    },
+    {
+      "speaker": "177",
+      "meanHz": 180,
+      "hnrDb": 12.3,
+      "flatness": 0.0039,
+      "clicks": 0,
+      "ms": 6705
+    },
+    {
+      "speaker": "204",
+      "meanHz": 108,
+      "hnrDb": 9.09,
+      "flatness": 0.0048,
+      "clicks": 0,
+      "ms": 7773
+    },
+    {
+      "speaker": "694",
+      "meanHz": 207,
+      "hnrDb": 12.8,
+      "flatness": 0.0059,
+      "clicks": 0,
+      "ms": 6989
+    },
+    {
+      "speaker": "707",
+      "meanHz": 106,
+      "hnrDb": 10.15,
+      "flatness": 0.0038,
+      "clicks": 0,
+      "ms": 7350
+    },
+    {
+      "speaker": "753",
+      "meanHz": 97,
+      "hnrDb": 8.34,
+      "flatness": 0.0065,
+      "clicks": 0,
+      "ms": 7520
+    },
+    {
+      "speaker": "1127",
+      "meanHz": 170,
+      "hnrDb": 11.82,
+      "flatness": 0.002,
+      "clicks": 0,
+      "ms": 6727
+    },
+    {
+      "speaker": "1243",
+      "meanHz": 188,
+      "hnrDb": 14.37,
+      "flatness": 0.0002,
+      "clicks": 0,
+      "ms": 5499
+    },
+    {
+      "speaker": "1329",
+      "meanHz": 209,
+      "hnrDb": 15.24,
+      "flatness": 0.0011,
+      "clicks": 0,
+      "ms": 6855
+    },
+    {
+      "speaker": "1474",
+      "meanHz": 209,
+      "hnrDb": 12.51,
+      "flatness": 0.0066,
+      "clicks": 0,
+      "ms": 6147
+    },
+    {
+      "speaker": "1590",
+      "meanHz": 102,
+      "hnrDb": 9.54,
+      "flatness": 0.0099,
+      "clicks": 1,
+      "ms": 7821
+    },
+    {
+      "speaker": "1624",
+      "meanHz": 113,
+      "hnrDb": 9.46,
+      "flatness": 0.0103,
+      "clicks": 1,
+      "ms": 7864
+    },
+    {
+      "speaker": "1649",
+      "meanHz": 217,
+      "hnrDb": 15.94,
+      "flatness": 0.0021,
+      "clicks": 0,
+      "ms": 7395
+    },
+    {
+      "speaker": "1664",
+      "meanHz": 184,
+      "hnrDb": 11.8,
+      "flatness": 0.0029,
+      "clicks": 0,
+      "ms": 5761
+    },
+    {
+      "speaker": "1745",
+      "meanHz": 127,
+      "hnrDb": 9.9,
+      "flatness": 0.003,
+      "clicks": 0,
+      "ms": 7428
+    },
+    {
+      "speaker": "1798",
+      "meanHz": 123,
+      "hnrDb": 7.3,
+      "flatness": 0.0146,
+      "clicks": 0,
+      "ms": 6364
+    },
+    {
+      "speaker": "1817",
+      "meanHz": 111,
+      "hnrDb": 9.46,
+      "flatness": 0.0035,
+      "clicks": 0,
+      "ms": 5055
+    },
+    {
+      "speaker": "1840",
+      "meanHz": 110,
+      "hnrDb": 10.55,
+      "flatness": 0.0018,
+      "clicks": 0,
+      "ms": 6381
+    },
+    {
+      "speaker": "1844",
+      "meanHz": 159,
+      "hnrDb": 13.76,
+      "flatness": 0.003,
+      "clicks": 0,
+      "ms": 8639
+    },
+    {
+      "speaker": "1887",
+      "meanHz": 208,
+      "hnrDb": 11.46,
+      "flatness": 0.006,
+      "clicks": 0,
+      "ms": 6706
+    },
+    {
+      "speaker": "1977",
+      "meanHz": 202,
+      "hnrDb": 15.34,
+      "flatness": 0.0015,
+      "clicks": 0,
+      "ms": 7130
+    },
+    {
+      "speaker": "1989",
+      "meanHz": 161,
+      "hnrDb": 12.71,
+      "flatness": 0.0107,
+      "clicks": 0,
+      "ms": 6339
+    },
+    {
+      "speaker": "2033",
+      "meanHz": 164,
+      "hnrDb": 12.06,
+      "flatness": 0.007,
+      "clicks": 0,
+      "ms": 8399
+    },
+    {
+      "speaker": "2155",
+      "meanHz": 202,
+      "hnrDb": 13.76,
+      "flatness": 0.0026,
+      "clicks": 0,
+      "ms": 6553
+    },
+    {
+      "speaker": "2284",
+      "meanHz": 108,
+      "hnrDb": 9.52,
+      "flatness": 0.0049,
+      "clicks": 2,
+      "ms": 6810
+    },
+    {
+      "speaker": "2506",
+      "meanHz": 208,
+      "hnrDb": 14.96,
+      "flatness": 0.0021,
+      "clicks": 0,
+      "ms": 6980
+    },
+    {
+      "speaker": "2544",
+      "meanHz": 194,
+      "hnrDb": 14.07,
+      "flatness": 0.0023,
+      "clicks": 1,
+      "ms": 8325
+    },
+    {
+      "speaker": "2587",
+      "meanHz": 186,
+      "hnrDb": 13.84,
+      "flatness": 0.0026,
+      "clicks": 1,
+      "ms": 7391
+    },
+    {
+      "speaker": "2596",
+      "meanHz": 158,
+      "hnrDb": 12.06,
+      "flatness": 0.0024,
+      "clicks": 0,
+      "ms": 6952
+    },
+    {
+      "speaker": "2607",
+      "meanHz": 170,
+      "hnrDb": 13.59,
+      "flatness": 0.0021,
+      "clicks": 0,
+      "ms": 7939
+    },
+    {
+      "speaker": "2771",
+      "meanHz": 116,
+      "hnrDb": 8.18,
+      "flatness": 0.0087,
+      "clicks": 1,
+      "ms": 5461
+    },
+    {
+      "speaker": "2776",
+      "meanHz": 201,
+      "hnrDb": 13.78,
+      "flatness": 0.0039,
+      "clicks": 0,
+      "ms": 6560
+    },
+    {
+      "speaker": "2825",
+      "meanHz": 114,
+      "hnrDb": 8.65,
+      "flatness": 0.0052,
+      "clicks": 1,
+      "ms": 7926
+    },
+    {
+      "speaker": "2904",
+      "meanHz": 114,
+      "hnrDb": 8.88,
+      "flatness": 0.0049,
+      "clicks": 0,
+      "ms": 6712
+    },
+    {
+      "speaker": "2926",
+      "meanHz": 215,
+      "hnrDb": 12.85,
+      "flatness": 0.0062,
+      "clicks": 0,
+      "ms": 8415
+    },
+    {
+      "speaker": "2946",
+      "meanHz": 119,
+      "hnrDb": 9.74,
+      "flatness": 0.0056,
+      "clicks": 0,
+      "ms": 7248
+    },
+    {
+      "speaker": "3060",
+      "meanHz": 173,
+      "hnrDb": 10.72,
+      "flatness": 0.0061,
+      "clicks": 0,
+      "ms": 6854
+    },
+    {
+      "speaker": "3182",
+      "meanHz": 125,
+      "hnrDb": 9.2,
+      "flatness": 0.0072,
+      "clicks": 0,
+      "ms": 6681
+    },
+    {
+      "speaker": "3190",
+      "meanHz": 123,
+      "hnrDb": 10.15,
+      "flatness": 0.0038,
+      "clicks": 0,
+      "ms": 6544
+    },
+    {
+      "speaker": "3204",
+      "meanHz": 179,
+      "hnrDb": 13.5,
+      "flatness": 0.0026,
+      "clicks": 0,
+      "ms": 4077
+    },
+    {
+      "speaker": "3270",
+      "meanHz": 204,
+      "hnrDb": 16.44,
+      "flatness": 0,
+      "clicks": 0,
+      "ms": 5465
+    },
+    {
+      "speaker": "3344",
+      "meanHz": 143,
+      "hnrDb": 10.89,
+      "flatness": 0.0048,
+      "clicks": 0,
+      "ms": 6744
+    },
+    {
+      "speaker": "3503",
+      "meanHz": 105,
+      "hnrDb": 10.37,
+      "flatness": 0.004,
+      "clicks": 0,
+      "ms": 8481
+    },
+    {
+      "speaker": "3595",
+      "meanHz": 164,
+      "hnrDb": 12.4,
+      "flatness": 0.0037,
+      "clicks": 0,
+      "ms": 7168
+    },
+    {
+      "speaker": "3698",
+      "meanHz": 183,
+      "hnrDb": 13.75,
+      "flatness": 0.0019,
+      "clicks": 0,
+      "ms": 7338
+    },
+    {
+      "speaker": "4018",
+      "meanHz": 117,
+      "hnrDb": 10.96,
+      "flatness": 0.0029,
+      "clicks": 0,
+      "ms": 7409
+    },
+    {
+      "speaker": "4174",
+      "meanHz": 203,
+      "hnrDb": 14.88,
+      "flatness": 0.0023,
+      "clicks": 0,
+      "ms": 6404
+    },
+    {
+      "speaker": "4336",
+      "meanHz": 207,
+      "hnrDb": 13.77,
+      "flatness": 0.0035,
+      "clicks": 0,
+      "ms": 6857
+    },
+    {
+      "speaker": "4396",
+      "meanHz": 152,
+      "hnrDb": 11.74,
+      "flatness": 0.0075,
+      "clicks": 1,
+      "ms": 6016
+    },
+    {
+      "speaker": "4512",
+      "meanHz": 186,
+      "hnrDb": 11.23,
+      "flatness": 0.0056,
+      "clicks": 0,
+      "ms": 6934
+    },
+    {
+      "speaker": "4609",
+      "meanHz": 208,
+      "hnrDb": 13.43,
+      "flatness": 0.0059,
+      "clicks": 0,
+      "ms": 6375
+    },
+    {
+      "speaker": "4650",
+      "meanHz": 202,
+      "hnrDb": 12.81,
+      "flatness": 0.0106,
+      "clicks": 0,
+      "ms": 8500
+    },
+    {
+      "speaker": "4699",
+      "meanHz": 109,
+      "hnrDb": 8.77,
+      "flatness": 0.0099,
+      "clicks": 0,
+      "ms": 7760
+    },
+    {
+      "speaker": "4744",
+      "meanHz": 186,
+      "hnrDb": 12.69,
+      "flatness": 0.0043,
+      "clicks": 1,
+      "ms": 7735
+    },
+    {
+      "speaker": "5077",
+      "meanHz": 211,
+      "hnrDb": 13.12,
+      "flatness": 0.0038,
+      "clicks": 1,
+      "ms": 6255
+    },
+    {
+      "speaker": "5232",
+      "meanHz": 178,
+      "hnrDb": 12.64,
+      "flatness": 0.0057,
+      "clicks": 0,
+      "ms": 5619
+    },
+    {
+      "speaker": "5295",
+      "meanHz": 150,
+      "hnrDb": 11.62,
+      "flatness": 0.0026,
+      "clicks": 0,
+      "ms": 7842
+    },
+    {
+      "speaker": "5525",
+      "meanHz": 129,
+      "hnrDb": 11.79,
+      "flatness": 0.0016,
+      "clicks": 0,
+      "ms": 5716
+    },
+    {
+      "speaker": "5553",
+      "meanHz": 203,
+      "hnrDb": 14.06,
+      "flatness": 0.0018,
+      "clicks": 0,
+      "ms": 5705
+    },
+    {
+      "speaker": "5595",
+      "meanHz": 138,
+      "hnrDb": 12.06,
+      "flatness": 0.004,
+      "clicks": 0,
+      "ms": 7788
+    },
+    {
+      "speaker": "5612",
+      "meanHz": 208,
+      "hnrDb": 12.43,
+      "flatness": 0.0062,
+      "clicks": 1,
+      "ms": 6970
+    },
+    {
+      "speaker": "5764",
+      "meanHz": 109,
+      "hnrDb": 8.95,
+      "flatness": 0.003,
+      "clicks": 0,
+      "ms": 6827
+    },
+    {
+      "speaker": "5840",
+      "meanHz": 114,
+      "hnrDb": 9.19,
+      "flatness": 0.0074,
+      "clicks": 0,
+      "ms": 7243
+    },
+    {
+      "speaker": "5968",
+      "meanHz": 168,
+      "hnrDb": 12.91,
+      "flatness": 0.0029,
+      "clicks": 0,
+      "ms": 7445
+    },
+    {
+      "speaker": "6070",
+      "meanHz": 193,
+      "hnrDb": 14.17,
+      "flatness": 0.0015,
+      "clicks": 0,
+      "ms": 6113
+    },
+    {
+      "speaker": "6128",
+      "meanHz": 211,
+      "hnrDb": 15.88,
+      "flatness": 0.0006,
+      "clicks": 0,
+      "ms": 5850
+    },
+    {
+      "speaker": "6249",
+      "meanHz": 121,
+      "hnrDb": 11.53,
+      "flatness": 0.0017,
+      "clicks": 0,
+      "ms": 8211
+    },
+    {
+      "speaker": "6348",
+      "meanHz": 167,
+      "hnrDb": 13.75,
+      "flatness": 0.0015,
+      "clicks": 0,
+      "ms": 7295
+    },
+    {
+      "speaker": "6362",
+      "meanHz": 190,
+      "hnrDb": 12.75,
+      "flatness": 0.0035,
+      "clicks": 0,
+      "ms": 6656
+    },
+    {
+      "speaker": "6381",
+      "meanHz": 183,
+      "hnrDb": 12.47,
+      "flatness": 0.0081,
+      "clicks": 0,
+      "ms": 5266
+    },
+    {
+      "speaker": "6856",
+      "meanHz": 99,
+      "hnrDb": 10.15,
+      "flatness": 0.006,
+      "clicks": 1,
+      "ms": 5434
+    },
+    {
+      "speaker": "7032",
+      "meanHz": 199,
+      "hnrDb": 13.44,
+      "flatness": 0.0028,
+      "clicks": 1,
+      "ms": 5757
+    },
+    {
+      "speaker": "7150",
+      "meanHz": 117,
+      "hnrDb": 8.92,
+      "flatness": 0.0075,
+      "clicks": 1,
+      "ms": 9007
+    },
+    {
+      "speaker": "7193",
+      "meanHz": 191,
+      "hnrDb": 15.33,
+      "flatness": 0.0019,
+      "clicks": 0,
+      "ms": 5887
+    },
+    {
+      "speaker": "7239",
+      "meanHz": 119,
+      "hnrDb": 7,
+      "flatness": 0.0037,
+      "clicks": 0,
+      "ms": 6022
+    },
+    {
+      "speaker": "7377",
+      "meanHz": 117,
+      "hnrDb": 10.09,
+      "flatness": 0.0037,
+      "clicks": 0,
+      "ms": 5569
+    },
+    {
+      "speaker": "7423",
+      "meanHz": 100,
+      "hnrDb": 8.98,
+      "flatness": 0.0047,
+      "clicks": 0,
+      "ms": 7156
+    },
+    {
+      "speaker": "7439",
+      "meanHz": 180,
+      "hnrDb": 12,
+      "flatness": 0.0034,
+      "clicks": 0,
+      "ms": 7213
+    },
+    {
+      "speaker": "7614",
+      "meanHz": 226,
+      "hnrDb": 11.58,
+      "flatness": 0.0011,
+      "clicks": 0,
+      "ms": 6830
+    },
+    {
+      "speaker": "7679",
+      "meanHz": 213,
+      "hnrDb": 14.8,
+      "flatness": 0.0012,
+      "clicks": 0,
+      "ms": 7102
+    },
+    {
+      "speaker": "7848",
+      "meanHz": 181,
+      "hnrDb": 13.17,
+      "flatness": 0.0027,
+      "clicks": 0,
+      "ms": 6872
+    },
+    {
+      "speaker": "8102",
+      "meanHz": 116,
+      "hnrDb": 10.1,
+      "flatness": 0.0056,
+      "clicks": 0,
+      "ms": 5566
+    },
+    {
+      "speaker": "8582",
+      "meanHz": 111,
+      "hnrDb": 8.86,
+      "flatness": 0.0032,
+      "clicks": 0,
+      "ms": 6031
+    },
+    {
+      "speaker": "8778",
+      "meanHz": 158,
+      "hnrDb": 10.76,
+      "flatness": 0.0022,
+      "clicks": 0,
+      "ms": 6132
+    },
+    {
+      "speaker": "9121",
+      "meanHz": 135,
+      "hnrDb": 11.36,
+      "flatness": 0.0046,
+      "clicks": 0,
+      "ms": 5064
+    },
+    {
+      "speaker": "9242",
+      "meanHz": 95,
+      "hnrDb": 8.15,
+      "flatness": 0.0054,
+      "clicks": 0,
+      "ms": 6197
+    },
+    {
+      "speaker": "9804",
+      "meanHz": 165,
+      "hnrDb": 12.5,
+      "flatness": 0.0028,
+      "clicks": 0,
+      "ms": 6308
+    },
+    {
+      "speaker": "9854",
+      "meanHz": 215,
+      "hnrDb": 15.23,
+      "flatness": 0.0004,
+      "clicks": 0,
+      "ms": 5660
+    },
+    {
+      "speaker": "10058",
+      "meanHz": 106,
+      "hnrDb": 9.52,
+      "flatness": 0.0044,
+      "clicks": 0,
+      "ms": 5123
+    },
+    {
+      "speaker": "10065",
+      "meanHz": 109,
+      "hnrDb": 10.58,
+      "flatness": 0.0045,
+      "clicks": 0,
+      "ms": 6188
+    },
+    {
+      "speaker": "10082",
+      "meanHz": 198,
+      "hnrDb": 14.63,
+      "flatness": 0.0013,
+      "clicks": 0,
+      "ms": 5875
+    },
+    {
+      "speaker": "10620",
+      "meanHz": 223,
+      "hnrDb": 15.49,
+      "flatness": 0.0003,
+      "clicks": 1,
+      "ms": 5930
+    },
+    {
+      "speaker": "10827",
+      "meanHz": 212,
+      "hnrDb": 15.06,
+      "flatness": 0.0012,
+      "clicks": 0,
+      "ms": 5729
+    },
+    {
+      "speaker": "10957",
+      "meanHz": 157,
+      "hnrDb": 12.51,
+      "flatness": 0.0049,
+      "clicks": 0,
+      "ms": 7329
+    },
+    {
+      "speaker": "11247",
+      "meanHz": 190,
+      "hnrDb": 13.28,
+      "flatness": 0.0019,
+      "clicks": 0,
+      "ms": 6934
+    },
+    {
+      "speaker": "11772",
+      "meanHz": 207,
+      "hnrDb": 15.81,
+      "flatness": 0.0017,
+      "clicks": 0,
+      "ms": 7377
+    },
+    {
+      "speaker": "11822",
+      "meanHz": 183,
+      "hnrDb": 11,
+      "flatness": 0.0063,
+      "clicks": 0,
+      "ms": 5274
+    },
+    {
+      "speaker": "11875",
+      "meanHz": 199,
+      "hnrDb": 15.6,
+      "flatness": 0.0001,
+      "clicks": 0,
+      "ms": 5244
+    },
+    {
+      "speaker": "11954",
+      "meanHz": 193,
+      "hnrDb": 16.98,
+      "flatness": 0.0014,
+      "clicks": 0,
+      "ms": 7113
+    },
+    {
+      "speaker": "12501",
+      "meanHz": 138,
+      "hnrDb": 9.96,
+      "flatness": 0.005,
+      "clicks": 0,
+      "ms": 5597
+    },
+    {
+      "speaker": "12512",
+      "meanHz": 131,
+      "hnrDb": 9.28,
+      "flatness": 0.0024,
+      "clicks": 0,
+      "ms": 5630
+    },
+    {
+      "speaker": "12541",
+      "meanHz": 202,
+      "hnrDb": 14.15,
+      "flatness": 0.0004,
+      "clicks": 0,
+      "ms": 5979
+    },
+    {
+      "speaker": "12709",
+      "meanHz": 199,
+      "hnrDb": 12.32,
+      "flatness": 0.0012,
+      "clicks": 0,
+      "ms": 6339
+    },
+    {
+      "speaker": "12713",
+      "meanHz": 184,
+      "hnrDb": 9.53,
+      "flatness": 0.005,
+      "clicks": 0,
+      "ms": 6396
+    },
+    {
+      "speaker": "12823",
+      "meanHz": 206,
+      "hnrDb": 13.43,
+      "flatness": 0.0027,
+      "clicks": 0,
+      "ms": 6332
+    },
+    {
+      "speaker": "12899",
+      "meanHz": 202,
+      "hnrDb": 11.91,
+      "flatness": 0.0058,
+      "clicks": 1,
+      "ms": 6528
+    },
+    {
+      "speaker": "12968",
+      "meanHz": 202,
+      "hnrDb": 14.12,
+      "flatness": 0.0028,
+      "clicks": 0,
+      "ms": 6039
+    },
+    {
+      "speaker": "12981",
+      "meanHz": 191,
+      "hnrDb": 11.49,
+      "flatness": 0.0142,
+      "clicks": 0,
+      "ms": 6221
+    },
+    {
+      "speaker": "13142",
+      "meanHz": 204,
+      "hnrDb": 11.12,
+      "flatness": 0.0063,
+      "clicks": 0,
+      "ms": 6263
+    },
+    {
+      "speaker": "13177",
+      "meanHz": 122,
+      "hnrDb": 9.66,
+      "flatness": 0.0022,
+      "clicks": 0,
+      "ms": 4888
+    },
+    {
+      "speaker": "13611",
+      "meanHz": 216,
+      "hnrDb": 14.95,
+      "flatness": 0.002,
+      "clicks": 0,
+      "ms": 6631
+    },
+    {
+      "speaker": "13634",
+      "meanHz": 173,
+      "hnrDb": 15.05,
+      "flatness": 0.0007,
+      "clicks": 0,
+      "ms": 5312
+    },
+    {
+      "speaker": "13658",
+      "meanHz": 170,
+      "hnrDb": 15.37,
+      "flatness": 0.0007,
+      "clicks": 0,
+      "ms": 6520
+    }
+  ],
+  "malesByHnr": [
+    {
+      "speaker": "5595",
+      "meanHz": 138,
+      "hnrDb": 12.06,
+      "flatness": 0.004,
+      "clicks": 0,
+      "ms": 7788
+    },
+    {
+      "speaker": "5525",
+      "meanHz": 129,
+      "hnrDb": 11.79,
+      "flatness": 0.0016,
+      "clicks": 0,
+      "ms": 5716
+    },
+    {
+      "speaker": "6249",
+      "meanHz": 121,
+      "hnrDb": 11.53,
+      "flatness": 0.0017,
+      "clicks": 0,
+      "ms": 8211
+    },
+    {
+      "speaker": "9121",
+      "meanHz": 135,
+      "hnrDb": 11.36,
+      "flatness": 0.0046,
+      "clicks": 0,
+      "ms": 5064
+    },
+    {
+      "speaker": "4018",
+      "meanHz": 117,
+      "hnrDb": 10.96,
+      "flatness": 0.0029,
+      "clicks": 0,
+      "ms": 7409
+    },
+    {
+      "speaker": "3344",
+      "meanHz": 143,
+      "hnrDb": 10.89,
+      "flatness": 0.0048,
+      "clicks": 0,
+      "ms": 6744
+    },
+    {
+      "speaker": "10065",
+      "meanHz": 109,
+      "hnrDb": 10.58,
+      "flatness": 0.0045,
+      "clicks": 0,
+      "ms": 6188
+    },
+    {
+      "speaker": "1840",
+      "meanHz": 110,
+      "hnrDb": 10.55,
+      "flatness": 0.0018,
+      "clicks": 0,
+      "ms": 6381
+    },
+    {
+      "speaker": "66",
+      "meanHz": 104,
+      "hnrDb": 10.53,
+      "flatness": 0.0022,
+      "clicks": 0,
+      "ms": 6624
+    },
+    {
+      "speaker": "3503",
+      "meanHz": 105,
+      "hnrDb": 10.37,
+      "flatness": 0.004,
+      "clicks": 0,
+      "ms": 8481
+    },
+    {
+      "speaker": "707",
+      "meanHz": 106,
+      "hnrDb": 10.15,
+      "flatness": 0.0038,
+      "clicks": 0,
+      "ms": 7350
+    },
+    {
+      "speaker": "3190",
+      "meanHz": 123,
+      "hnrDb": 10.15,
+      "flatness": 0.0038,
+      "clicks": 0,
+      "ms": 6544
+    },
+    {
+      "speaker": "6856",
+      "meanHz": 99,
+      "hnrDb": 10.15,
+      "flatness": 0.006,
+      "clicks": 1,
+      "ms": 5434
+    },
+    {
+      "speaker": "8102",
+      "meanHz": 116,
+      "hnrDb": 10.1,
+      "flatness": 0.0056,
+      "clicks": 0,
+      "ms": 5566
+    },
+    {
+      "speaker": "7377",
+      "meanHz": 117,
+      "hnrDb": 10.09,
+      "flatness": 0.0037,
+      "clicks": 0,
+      "ms": 5569
+    },
+    {
+      "speaker": "12501",
+      "meanHz": 138,
+      "hnrDb": 9.96,
+      "flatness": 0.005,
+      "clicks": 0,
+      "ms": 5597
+    },
+    {
+      "speaker": "94",
+      "meanHz": 111,
+      "hnrDb": 9.92,
+      "flatness": 0.0033,
+      "clicks": 0,
+      "ms": 7476
+    },
+    {
+      "speaker": "1745",
+      "meanHz": 127,
+      "hnrDb": 9.9,
+      "flatness": 0.003,
+      "clicks": 0,
+      "ms": 7428
+    },
+    {
+      "speaker": "2946",
+      "meanHz": 119,
+      "hnrDb": 9.74,
+      "flatness": 0.0056,
+      "clicks": 0,
+      "ms": 7248
+    },
+    {
+      "speaker": "13177",
+      "meanHz": 122,
+      "hnrDb": 9.66,
+      "flatness": 0.0022,
+      "clicks": 0,
+      "ms": 4888
+    },
+    {
+      "speaker": "1590",
+      "meanHz": 102,
+      "hnrDb": 9.54,
+      "flatness": 0.0099,
+      "clicks": 1,
+      "ms": 7821
+    },
+    {
+      "speaker": "2284",
+      "meanHz": 108,
+      "hnrDb": 9.52,
+      "flatness": 0.0049,
+      "clicks": 2,
+      "ms": 6810
+    },
+    {
+      "speaker": "10058",
+      "meanHz": 106,
+      "hnrDb": 9.52,
+      "flatness": 0.0044,
+      "clicks": 0,
+      "ms": 5123
+    },
+    {
+      "speaker": "1624",
+      "meanHz": 113,
+      "hnrDb": 9.46,
+      "flatness": 0.0103,
+      "clicks": 1,
+      "ms": 7864
+    },
+    {
+      "speaker": "1817",
+      "meanHz": 111,
+      "hnrDb": 9.46,
+      "flatness": 0.0035,
+      "clicks": 0,
+      "ms": 5055
+    },
+    {
+      "speaker": "12512",
+      "meanHz": 131,
+      "hnrDb": 9.28,
+      "flatness": 0.0024,
+      "clicks": 0,
+      "ms": 5630
+    },
+    {
+      "speaker": "3182",
+      "meanHz": 125,
+      "hnrDb": 9.2,
+      "flatness": 0.0072,
+      "clicks": 0,
+      "ms": 6681
+    },
+    {
+      "speaker": "5840",
+      "meanHz": 114,
+      "hnrDb": 9.19,
+      "flatness": 0.0074,
+      "clicks": 0,
+      "ms": 7243
+    },
+    {
+      "speaker": "204",
+      "meanHz": 108,
+      "hnrDb": 9.09,
+      "flatness": 0.0048,
+      "clicks": 0,
+      "ms": 7773
+    },
+    {
+      "speaker": "7423",
+      "meanHz": 100,
+      "hnrDb": 8.98,
+      "flatness": 0.0047,
+      "clicks": 0,
+      "ms": 7156
+    },
+    {
+      "speaker": "5764",
+      "meanHz": 109,
+      "hnrDb": 8.95,
+      "flatness": 0.003,
+      "clicks": 0,
+      "ms": 6827
+    },
+    {
+      "speaker": "7150",
+      "meanHz": 117,
+      "hnrDb": 8.92,
+      "flatness": 0.0075,
+      "clicks": 1,
+      "ms": 9007
+    },
+    {
+      "speaker": "2904",
+      "meanHz": 114,
+      "hnrDb": 8.88,
+      "flatness": 0.0049,
+      "clicks": 0,
+      "ms": 6712
+    },
+    {
+      "speaker": "8582",
+      "meanHz": 111,
+      "hnrDb": 8.86,
+      "flatness": 0.0032,
+      "clicks": 0,
+      "ms": 6031
+    },
+    {
+      "speaker": "4699",
+      "meanHz": 109,
+      "hnrDb": 8.77,
+      "flatness": 0.0099,
+      "clicks": 0,
+      "ms": 7760
+    },
+    {
+      "speaker": "2825",
+      "meanHz": 114,
+      "hnrDb": 8.65,
+      "flatness": 0.0052,
+      "clicks": 1,
+      "ms": 7926
+    },
+    {
+      "speaker": "753",
+      "meanHz": 97,
+      "hnrDb": 8.34,
+      "flatness": 0.0065,
+      "clicks": 0,
+      "ms": 7520
+    },
+    {
+      "speaker": "2771",
+      "meanHz": 116,
+      "hnrDb": 8.18,
+      "flatness": 0.0087,
+      "clicks": 1,
+      "ms": 5461
+    },
+    {
+      "speaker": "9242",
+      "meanHz": 95,
+      "hnrDb": 8.15,
+      "flatness": 0.0054,
+      "clicks": 0,
+      "ms": 6197
+    },
+    {
+      "speaker": "1798",
+      "meanHz": 123,
+      "hnrDb": 7.3,
+      "flatness": 0.0146,
+      "clicks": 0,
+      "ms": 6364
+    },
+    {
+      "speaker": "7239",
+      "meanHz": 119,
+      "hnrDb": 7,
+      "flatness": 0.0037,
+      "clicks": 0,
+      "ms": 6022
+    }
+  ]
+}

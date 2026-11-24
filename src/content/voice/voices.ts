@@ -219,12 +219,16 @@ export async function neuralReadyModels(): Promise<string[]> {
 /** Added to a neural voice's quality once its model is downloaded (ranks first; popup shows "not downloaded" below it). */
 export const NEURAL_READY_BONUS = 1000;
 
-/** Neural voices for `lang` as VoiceInfo; downloaded ones rank first. Pure; exported for tests. */
+/** v1.2.2: recommended voices (Siwis, Pierre) always rank above others, even before they are downloaded
+ * (picking one starts its download; Web Speech fills in meanwhile). Owners who had Tom move to Pierre on reload. */
+export const NEURAL_RECOMMENDED_BONUS = 2000;
+
+/** Neural voices for `lang` as VoiceInfo; recommended first, then downloaded. Pure; exported for tests. */
 export function neuralVoiceInfos(lang: Lang, ready: readonly string[] = []): VoiceInfo[] {
   return neuralVoicesFor(lang)
     .map((v): VoiceInfo => ({
       id: v.id, name: v.name, lang: v.bcp47, engine: 'neural', gender: v.gender,
-      quality: v.rank + (ready.includes(v.model) ? NEURAL_READY_BONUS : 0),
+      quality: v.rank + (v.recommended ? NEURAL_RECOMMENDED_BONUS : 0) + (ready.includes(v.model) ? NEURAL_READY_BONUS : 0),
     }))
     .sort((a, b) => b.quality - a.quality || a.name.localeCompare(b.name));
 }

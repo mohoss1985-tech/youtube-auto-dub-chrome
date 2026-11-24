@@ -9,6 +9,8 @@ import type { ProsodyParams } from '../shared/types';
 
 export const F0_MIN_HZ = 70;
 export const F0_MAX_HZ = 500;
+/** v1.2.2 (M): F0 search range per voice gender (Hz). Male voices: 60–250 Hz avoids octave-up picks on strong H2. */
+export const F0_RANGE: Readonly<Record<'male' | 'female', readonly [number, number]>> = { male: [60, 250], female: [100, 500] };
 /** Analysis hop (s). */
 export const HOP_S = 0.005;
 const WIN_S = 0.032;
@@ -203,7 +205,15 @@ export function psola(x: Float32Array, sr: number, track: F0Track, ratioAt: (i: 
   const M = marks.at.length;
   if (!M) return Float32Array.from(x);
   const ratio = new Float32Array(M);
-  for (let k = 0; k < M; k++) ratio[k] = marks.voiced[k] ? Math.min(2, Math.max(0.5, ratioAt(k, marks))) : 1;
+  for (let k = 0; k < M; k++) {
+    if (!marks.voiced[k]) { ratio[k] = 1; continue; }
+    // v1.2.2 (M) octave guard: a mark whose measured period disagrees with the F0 track by ≥ 0.7 octave is a
+    // tracking error (typical on low male F0 with a strong 2nd harmonic) → leave that grain at its own pitch.
+    const f = f0At(track, marks.at[k]);
+    const bad = !(f > 0) || Math.abs(Math.log2(sr / f / marks.period[k])) > 0.7;
+    ratio[k] = bad ? 1 : Math.min(2, Math.max(0.5, ratioAt(k, marks)));
+  }
+  smoothRatios(ratio, marks.voiced);
   let t = marks.at[0];
   // Copy anything before the first mark.
   for (let i = 0; i < Math.min(n, t); i++) { out[i] = x[i]; wsum[i] = 1; }
@@ -211,21 +221,43 @@ export function psola(x: Float32Array, sr: number, track: F0Track, ratioAt: (i: 
   while (t < n) {
     while (k + 1 < M && Math.abs(marks.at[k + 1] - t) <= Math.abs(marks.at[k] - t)) k++;
     const P = Math.max(2, marks.period[k]);
-    const L = Math.round(P);
     const c = marks.at[k];
+    // v1.2.2 (M): pitch-synchronous asymmetric Hann grain: left half = distance to the previous mark, right half =
+    // distance to the next one (each clamped to 0.5–1.5 P), so a grain never reaches into a third period.
+    const Ll = Math.max(2, Math.round(Math.min(1.5 * P, Math.max(0.5 * P, k > 0 ? c - marks.at[k - 1] : P))));
+    const Lr = Math.max(2, Math.round(Math.min(1.5 * P, Math.max(0.5 * P, k + 1 < M ? marks.at[k + 1] - c : P))));
     const ti = Math.round(t);
-    for (let j = -L; j <= L; j++) {
+    for (let j = -Ll; j <= Lr; j++) {
       const s = c + j, d = ti + j;
       if (s < 0 || s >= n || d < 0 || d >= n) continue;
-      const w = 0.5 * (1 + Math.cos((Math.PI * j) / L));
+      const w = 0.5 * (1 + Math.cos((Math.PI * j) / (j < 0 ? Ll : Lr)));
       out[d] += w * x[s];
       wsum[d] += w;
     }
     t += P / ratio[k];
   }
-  // Normalise the overlap gain of raised-pitch grains; leave natural gaps of lowered pitch alone.
-  for (let i = 0; i < n; i++) if (wsum[i] > 1) out[i] /= wsum[i];
+  // v1.2.2 (M): normalise the overlap-add by the window sum everywhere (floor 0.35). v1.2 left the dips between
+  // lowered-pitch grains alone → amplitude buzz at F0 rate, worst on male voices (k expansion lowers half of each contour).
+  for (let i = 0; i < n; i++) if (wsum[i] > 1e-6) out[i] /= Math.max(WSUM_FLOOR, wsum[i]);
   return out;
+}
+
+const WSUM_FLOOR = 0.35;
+/** Max pitch-ratio change between consecutive voiced grains (semitones): no pitch steps inside a voiced run. */
+const MAX_RATIO_STEP_ST = 0.6;
+
+/** 3-point median, then slew-limit the per-grain ratios of each voiced run (both directions). In place. */
+function smoothRatios(r: Float32Array, voiced: Uint8Array): void {
+  const M = r.length;
+  const src = Float32Array.from(r);
+  for (let k = 1; k + 1 < M; k++) {
+    if (!voiced[k] || !voiced[k - 1] || !voiced[k + 1]) continue;
+    const a = src[k - 1], b = src[k], c = src[k + 1];
+    r[k] = Math.max(Math.min(a, b), Math.min(Math.max(a, b), c));
+  }
+  const step = 2 ** (MAX_RATIO_STEP_ST / 12);
+  for (let k = 1; k < M; k++) if (voiced[k] && voiced[k - 1]) r[k] = Math.min(r[k - 1] * step, Math.max(r[k - 1] / step, r[k]));
+  for (let k = M - 2; k >= 0; k--) if (voiced[k] && voiced[k + 1]) r[k] = Math.min(r[k + 1] * step, Math.max(r[k + 1] / step, r[k]));
 }
 
 // ---------------------------------------------------------------- the expressive pass
@@ -315,9 +347,10 @@ export interface ExpressResult {
  * Apply ProsodyParams to one synthesized line (mono float PCM). Never changes the length.
  * `measureAfter` re-tracks the output F0 (tests/diagnostics; costs one more analysis).
  */
-export function expressify(pcm: Float32Array, sr: number, p: ProsodyParams, measureAfter = false): ExpressResult {
+export function expressify(pcm: Float32Array, sr: number, p: ProsodyParams, measureAfter = false, opts: ExpressOptions = {}): ExpressResult {
   const n = pcm.length;
-  const track = trackF0(pcm, sr);
+  const [minHz, maxHz] = opts.gender ? F0_RANGE[opts.gender] : [F0_MIN_HZ, F0_MAX_HZ];
+  const track = trackF0(pcm, sr, minHz, maxHz);
   const before = f0Stats(track);
   const c2s = charToSample(pcm, sr);
   const spans = p.emphasis.map((e) => ({ a: c2s(e.from), b: c2s(e.to), db: e.db, st: e.st }));
@@ -365,5 +398,35 @@ export function expressify(pcm: Float32Array, sr: number, p: ProsodyParams, meas
     }
   }
   softLimit(y, sr);
-  return { pcm: y, before, after: measureAfter ? f0Stats(trackF0(y, sr)) : undefined };
+  return { pcm: y, before, after: measureAfter ? f0Stats(trackF0(y, sr, minHz, maxHz)) : undefined };
+}
+
+export interface ExpressOptions {
+  /** Voice gender: picks the F0 search range (male 60–250 Hz). Absent = the v1.2 range (70–500 Hz). */
+  gender?: 'male' | 'female';
+}
+
+/** Max contour expansion for male voices: PSOLA on a low F0 gets rough/cartoonish above ~1.4. */
+export const MALE_MAX_K = 1.4;
+
+/**
+ * v1.2.2 (M): adapt the generic ProsodyParams (built against Piper's stock 0.667 / 0.8 noise) to one voice:
+ * - noise relative to the model's own defaults (Siwis ships 0.5 / 0.333, MLS 0.333 / 0.333, Tom 0.667 / 0.8);
+ *   male voices never get MORE noise than their defaults (measured: higher noise_scale = lower HNR, more dips);
+ * - male: contour expansion scaled into 1…1.4 and the mean upward shift ×0.6 (a pushed-up male voice sounds strained).
+ */
+export function voiceProsody(p: ProsodyParams, gender: 'male' | 'female' | undefined, inf: { noise_scale?: number; noise_w?: number } = {}): ProsodyParams {
+  const ns0 = inf.noise_scale ?? 0.667, nw0 = inf.noise_w ?? 0.8;
+  const male = gender === 'male';
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  const r3 = (v: number) => Math.round(v * 1000) / 1000;
+  const noiseScale = r3(clamp(ns0 * (p.noiseScale / 0.667), ns0 * 0.6, ns0 * (male ? 1 : 1.3)));
+  const noiseW = r3(clamp(nw0 * (p.noiseW / 0.8), nw0 * 0.6, nw0 * (male ? 1.05 : 1.3)));
+  if (!male) return { ...p, noiseScale, noiseW };
+  return {
+    ...p, noiseScale, noiseW,
+    pitchK: r3(1 + Math.max(0, p.pitchK - 1) * ((MALE_MAX_K - 1) / 0.8)),
+    meanShiftSt: r3(p.meanShiftSt > 0 ? p.meanShiftSt * 0.6 : p.meanShiftSt),
+    emphasis: p.emphasis.map((e) => ({ ...e, st: r3(e.st * 0.7) })),
+  };
 }

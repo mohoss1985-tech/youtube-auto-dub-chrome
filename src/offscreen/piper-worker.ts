@@ -4,9 +4,9 @@ import * as ort from 'onnxruntime-web/wasm';
 // emscripten build of rhasspy/piper-phonemize (espeak-ng), MIT. Bundled by esbuild (CJS → ESM).
 import createPiperPhonemize from '@diffusionstudio/piper-wasm/build/piper_phonemize.js';
 import { NEURAL_CACHE, modelUrls, neuralVoice } from '../content/voice/neural-catalog';
-import { bytesToB64, encodeWav, normalizePeak, synthesizePcm, trimSilence, type LoadedModel, type PhonemizerAssets, type PiperConfig } from './piper';
+import { bytesToB64, encodeWav, fadeEdges, normalizePeak, synthesizePcm, trimSilence, type LoadedModel, type PhonemizerAssets, type PiperConfig } from './piper';
 import type { WorkerReq, WorkerRes, WorkerEvent, DownloadProgress } from './protocol';
-import { expressify } from './prosody-dsp';
+import { expressify, voiceProsody } from './prosody-dsp';
 import type { ProsodyParams } from '../shared/types';
 
 const BASE = new URL('./', self.location.href).href; // chrome-extension://<id>/
@@ -155,15 +155,19 @@ async function tts(text: string, voiceId: string, lengthScale?: number, prosody?
   }
   const [assets, model] = await Promise.all([phonemizerAssets(), loadModel(v.model)]);
   const t0 = performance.now();
-  const r = await synthesizePcm(ort, assets, model, text, v.speaker, lengthScale, prosody);
-  let pcm = trimSilence(normalizePeak(r.pcm), r.sampleRate);
-  // v1.2 (E): expressive intonation + energy (duration preserved, so `ms` stays exact). No prosody = v1.1 bytes.
+  // v1.2.2 (M): per-voice prosody (noise relative to the model's defaults; male: k ≤ 1.4, F0 range 60–250 Hz).
+  const vp = prosody ? voiceProsody(prosody, v.gender, model.config.inference) : undefined;
+  const r = await synthesizePcm(ort, assets, model, text, v.speaker, lengthScale, vp);
+  let pcm: Float32Array = Float32Array.from(trimSilence(normalizePeak(r.pcm), r.sampleRate));
+  // v1.2 (E): expressive intonation + energy (duration preserved, so `ms` stays exact).
   let postMs: number | undefined;
-  if (prosody) {
+  if (vp) {
     const tp = performance.now();
-    try { pcm = expressify(pcm, r.sampleRate, prosody).pcm; } catch { /* keep the plain line */ }
+    try { pcm = expressify(pcm, r.sampleRate, vp, false, { gender: v.gender }).pcm; } catch { /* keep the plain line */ }
     postMs = performance.now() - tp;
   }
+  // v1.2.2 (M): never end (or start) on a non-zero sample: 25 ms fade-out inside the 60 ms tail margin.
+  fadeEdges(pcm, r.sampleRate);
   const wav = encodeWav(pcm, r.sampleRate);
   const ms = (pcm.length / r.sampleRate) * 1000;
   const computeMs = performance.now() - t0;

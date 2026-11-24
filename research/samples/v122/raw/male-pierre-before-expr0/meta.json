@@ -1,0 +1,43 @@
+{
+  "voice": "fr_FR-upmc-medium#pierre",
+  "expr": 0,
+  "sr": 22050,
+  "lines": [
+    {
+      "line": "neutral",
+      "ms": 3395,
+      "rtf": 0.062,
+      "postMs": null
+    },
+    {
+      "line": "excited",
+      "ms": 2535,
+      "rtf": 0.07,
+      "postMs": null
+    },
+    {
+      "line": "question",
+      "ms": 2060,
+      "rtf": 0.065,
+      "postMs": null
+    },
+    {
+      "line": "long",
+      "ms": 6777,
+      "rtf": 0.076,
+      "postMs": null
+    },
+    {
+      "line": "shout",
+      "ms": 2850,
+      "rtf": 0.087,
+      "postMs": null
+    },
+    {
+      "line": "soft-end",
+      "ms": 3321,
+      "rtf": 0.083,
+      "postMs": null
+    }
+  ]
+}

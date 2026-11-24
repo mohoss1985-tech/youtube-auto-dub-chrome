@@ -124,6 +124,22 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
     handleMessage(msg).then(sendResponse);
     return true; // async response
   });
+  // v1.2.2: Tom (choppy) → Pierre. On update, forget an auto-saved Tom choice once so the new default applies.
+  chrome.runtime.onInstalled?.addListener((d) => {
+    if (d.reason !== 'update') return;
+    void (async () => {
+      try {
+        const got = await chrome.storage.local.get(['settings', 'migratedV122']);
+        if (got.migratedV122) return;
+        const st = (got.settings ?? {}) as { voiceByLang?: Record<string, string> };
+        if (st.voiceByLang?.fr === 'fr_FR-tom-medium') {
+          const { fr: _tom, ...rest } = st.voiceByLang;
+          await chrome.storage.local.set({ settings: { ...st, voiceByLang: rest } });
+        }
+        await chrome.storage.local.set({ migratedV122: true });
+      } catch { /* ignore */ }
+    })();
+  });
   chrome.commands?.onCommand.addListener((command) => {
     onCommand(command).catch(() => {});
   });

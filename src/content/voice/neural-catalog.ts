@@ -37,11 +37,14 @@ export const NEURAL_READY_KEY = 'neuralReady';
 export const NEURAL_CACHE = 'autodub-piper-v1';
 
 export const NEURAL_VOICES: readonly NeuralVoice[] = [
-  // French (priority). siwis = clearest French female Piper voice; tom = natural male (44.1 kHz).
+  // French (priority). siwis = clearest French female Piper voice.
+  // v1.2.2 (M): default male = Pierre (upmc). Measured vs Tom on 6 lines (research/v122-M.md): 2.5× less noise
+  // (spectral flatness 0.007 vs 0.018), HNR 8.0 vs 6.3 dB, 3× fewer speech breaks (0.8 vs 2.2 /s: Tom's "cutting"),
+  // 0 clicks, tempo close to Siwis. Tom (44.1 kHz, breathy/choppy) stays selectable.
   { id: 'fr_FR-siwis-medium', model: 'fr_FR-siwis-medium', lang: 'fr', bcp47: 'fr-FR', name: 'Siwis', gender: 'female', license: 'CC BY 4.0 (SIWIS corpus)', sizeMB: 63, rank: 100, recommended: true },
-  { id: 'fr_FR-tom-medium', model: 'fr_FR-tom-medium', lang: 'fr', bcp47: 'fr-FR', name: 'Tom', gender: 'male', license: 'AGPL-3.0 (model by Tjiho)', sizeMB: 64, rank: 95, recommended: true },
+  { id: 'fr_FR-upmc-medium#pierre', model: 'fr_FR-upmc-medium', speaker: 'pierre', lang: 'fr', bcp47: 'fr-FR', name: 'Pierre', gender: 'male', license: 'CC BY-SA 4.0 (UPMC corpus)', sizeMB: 77, rank: 96, recommended: true },
+  { id: 'fr_FR-tom-medium', model: 'fr_FR-tom-medium', lang: 'fr', bcp47: 'fr-FR', name: 'Tom', gender: 'male', license: 'AGPL-3.0 (model by Tjiho)', sizeMB: 64, rank: 85 },
   { id: 'fr_FR-upmc-medium#jessica', model: 'fr_FR-upmc-medium', speaker: 'jessica', lang: 'fr', bcp47: 'fr-FR', name: 'Jessica', gender: 'female', license: 'CC BY-SA 4.0 (UPMC corpus)', sizeMB: 77, rank: 80 },
-  { id: 'fr_FR-upmc-medium#pierre', model: 'fr_FR-upmc-medium', speaker: 'pierre', lang: 'fr', bcp47: 'fr-FR', name: 'Pierre', gender: 'male', license: 'CC BY-SA 4.0 (UPMC corpus)', sizeMB: 77, rank: 78 },
   // English
   { id: 'en_US-hfc_female-medium', model: 'en_US-hfc_female-medium', lang: 'en', bcp47: 'en-US', name: 'HFC Female', gender: 'female', license: 'CC BY-NC-SA 4.0 (personal use)', sizeMB: 63, rank: 90, recommended: true },
   { id: 'en_US-ryan-medium', model: 'en_US-ryan-medium', lang: 'en', bcp47: 'en-US', name: 'Ryan', gender: 'male', license: 'CC BY-NC-SA 4.0 (personal use)', sizeMB: 63, rank: 90, recommended: true },
@@ -57,7 +60,12 @@ export const NEURAL_VOICES: readonly NeuralVoice[] = [
 /** Catalog entry for a voice id (or a bare model key). */
 export function neuralVoice(id: string | undefined): NeuralVoice | undefined {
   if (!id) return undefined;
-  return NEURAL_VOICES.find((v) => v.id === id) ?? NEURAL_VOICES.find((v) => v.model === id);
+  const hit = NEURAL_VOICES.find((v) => v.id === id) ?? NEURAL_VOICES.find((v) => v.model === id);
+  if (hit) return hit;
+  // v1.2.2 (M): any speaker of a known multi-speaker model (`model#speaker`), e.g. another MLS reader.
+  const [model, speaker] = id.split('#');
+  const base = speaker ? NEURAL_VOICES.find((v) => v.model === model && v.speaker) : undefined;
+  return base ? { ...base, id, speaker, name: `${base.name.split(' ')[0]} ${speaker}`, recommended: false, rank: base.rank - 5 } : undefined;
 }
 
 /** Voices for a language, best first. */

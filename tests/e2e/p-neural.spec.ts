@@ -62,6 +62,6 @@ test('popup shows the neural engine with Male/Female voices', async ({ context, 
   await page.locator('input[name="engine"][value="neural"]').check();
   await expect(page.locator('[data-neural]')).toBeVisible();
   await expect(page.locator('[data-neural-voice="fr_FR-siwis-medium"]')).toContainText('Female');
-  await expect(page.locator('[data-neural-voice="fr_FR-tom-medium"]')).toContainText('Male');
+  await expect(page.locator('[data-neural-voice="fr_FR-upmc-medium#pierre"]')).toContainText('Male'); // v1.2.2 (M): Pierre = default male
   await expect(page.locator('.eng-rec')).toHaveText('Recommended for French');
 });

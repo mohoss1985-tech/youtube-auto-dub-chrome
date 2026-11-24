@@ -25,14 +25,29 @@ export function normalizePeak(pcm: Float32Array, peak = 0.9): Float32Array {
 }
 
 /** Cut leading/trailing near-silence (keeps `padMs` of margin) so `knownMs` is the real speech length → tighter sync. */
-export function trimSilence(pcm: Float32Array, sampleRate: number, threshold = 0.015, padMs = 30): Float32Array {
+export function trimSilence(pcm: Float32Array, sampleRate: number, threshold = 0.015, padMs = 30, tailPadMs = padMs * 2): Float32Array {
   let a = 0;
   let b = pcm.length - 1;
   while (a < pcm.length && Math.abs(pcm[a]) < threshold) a++;
   while (b > a && Math.abs(pcm[b]) < threshold) b--;
   if (a >= b) return pcm;
   const pad = Math.round((sampleRate * padMs) / 1000);
-  return pcm.subarray(Math.max(0, a - pad), Math.min(pcm.length, b + 1 + pad));
+  // v1.2.2 (M): a longer tail margin (60 ms) keeps the soft decay of final fricatives/breaths ("…dollars", "…sais").
+  const tail = Math.round((sampleRate * tailPadMs) / 1000);
+  return pcm.subarray(Math.max(0, a - pad), Math.min(pcm.length, b + 1 + tail));
+}
+
+/**
+ * v1.2.2 (M): raised-cosine fade-in (`inMs`) and fade-out (`outMs`, ≥ 20 ms) so a line never starts or stops on a
+ * non-zero sample (the "cut" click at the end of v1.2.1 lines). Length unchanged. In place.
+ */
+export function fadeEdges(pcm: Float32Array, sampleRate: number, inMs = 4, outMs = 25): Float32Array {
+  const n = pcm.length;
+  const fi = Math.min(n >> 2, Math.round((sampleRate * inMs) / 1000));
+  const fo = Math.min(n >> 1, Math.round((sampleRate * Math.max(20, outMs)) / 1000));
+  for (let i = 0; i < fi; i++) pcm[i] *= 0.5 - 0.5 * Math.cos((Math.PI * i) / fi);
+  for (let i = 0; i < fo; i++) pcm[n - 1 - i] *= 0.5 - 0.5 * Math.cos((Math.PI * i) / fo);
+  return pcm;
 }
 
 /** Float32 PCM (mono) → 16-bit PCM WAV bytes. */
